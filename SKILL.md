@@ -177,7 +177,8 @@ python scripts/run.py cleanup_manager.py --preserve-library # Keep notebooks
 The virtual environment is automatically managed:
 - First run creates `.venv` automatically
 - Dependencies install automatically
-- Chromium browser installs automatically
+- Node.js dependencies install automatically
+- The agent-browser daemon starts on demand when a script connects
 - Everything isolated in skill directory
 
 Manual setup (only if automatic fails):
@@ -185,7 +186,7 @@ Manual setup (only if automatic fails):
 python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
-python -m patchright install chromium
+npm install
 ```
 
 ## Data Storage
@@ -193,7 +194,8 @@ python -m patchright install chromium
 All data stored in `~/.claude/skills/notebooklm/data/`:
 - `library.json` - Notebook metadata
 - `auth_info.json` - Authentication status
-- `browser_state/` - Browser cookies and session
+- `agent_browser/profile/` - Browser profile and session data
+- `agent_browser/session_id` - Current daemon session ID
 
 **Security:** Protected by `.gitignore`, never commit to git.
 
@@ -235,6 +237,9 @@ Synthesize and respond to user
 |---------|----------|
 | ModuleNotFoundError | Use `run.py` wrapper |
 | Authentication fails | Browser must be visible for setup! --show-browser |
+| DAEMON_UNAVAILABLE | Ensure Node.js/npm installed, run `npm install`, retry |
+| AUTH_REQUIRED | Run `python scripts/run.py auth_manager.py setup` |
+| ELEMENT_NOT_FOUND | Verify notebook URL and re-run with fresh page load |
 | Rate limit (50/day) | Wait or switch Google account |
 | Browser crashes | `python scripts/run.py cleanup_manager.py --preserve-library` |
 | Notebook not found | Check with `notebook_manager.py list` |
