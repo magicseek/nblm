@@ -1,357 +1,222 @@
 #!/usr/bin/env python3
 """
-Authentication Manager for NotebookLM
-Handles Google login and browser state persistence
-Based on the MCP server implementation
-
-Implements hybrid auth approach:
-- Persistent browser profile (user_data_dir) for fingerprint consistency
-- Manual cookie injection from state.json for session cookies (Playwright bug workaround)
-See: https://github.com/microsoft/playwright/issues/36139
+Authentication Manager for NotebookLM Skill
+Handles Google authentication using agent-browser
 """
 
-import json
-import time
 import argparse
-import shutil
-import re
+import json
 import sys
+import time
 from pathlib import Path
-from typing import Optional, Dict, Any
+from datetime import datetime
 
-from patchright.sync_api import sync_playwright, BrowserContext
-
-# Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config import BROWSER_STATE_DIR, STATE_FILE, AUTH_INFO_FILE, DATA_DIR
-from browser_utils import BrowserFactory
+from config import DATA_DIR, AGENT_BROWSER_SESSION_FILE
+from agent_browser_client import AgentBrowserClient, AgentBrowserError
 
 
 class AuthManager:
-    """
-    Manages authentication and browser state for NotebookLM
+    """Manage Google authentication for NotebookLM"""
 
-    Features:
-    - Interactive Google login
-    - Browser state persistence
-    - Session restoration
-    - Account switching
-    """
+    AUTH_INFO_FILE = DATA_DIR / "auth_info.json"
 
     def __init__(self):
-        """Initialize the authentication manager"""
-        # Ensure directories exist
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        BROWSER_STATE_DIR.mkdir(parents=True, exist_ok=True)
-
-        self.state_file = STATE_FILE
-        self.auth_info_file = AUTH_INFO_FILE
-        self.browser_state_dir = BROWSER_STATE_DIR
 
     def is_authenticated(self) -> bool:
-        """Check if valid authentication exists"""
-        if not self.state_file.exists():
+        """Check if user is authenticated"""
+        if not self.AUTH_INFO_FILE.exists():
             return False
 
-        # Check if state file is not too old (7 days)
-        age_days = (time.time() - self.state_file.stat().st_mtime) / 86400
-        if age_days > 7:
-            print(f"⚠️ Browser state is {age_days:.1f} days old, may need re-authentication")
-
-        return True
-
-    def get_auth_info(self) -> Dict[str, Any]:
-        """Get authentication information"""
-        info = {
-            'authenticated': self.is_authenticated(),
-            'state_file': str(self.state_file),
-            'state_exists': self.state_file.exists()
-        }
-
-        if self.auth_info_file.exists():
-            try:
-                with open(self.auth_info_file, 'r') as f:
-                    saved_info = json.load(f)
-                    info.update(saved_info)
-            except Exception:
-                pass
-
-        if info['state_exists']:
-            age_hours = (time.time() - self.state_file.stat().st_mtime) / 3600
-            info['state_age_hours'] = age_hours
-
-        return info
-
-    def setup_auth(self, headless: bool = False, timeout_minutes: int = 10) -> bool:
-        """
-        Perform interactive authentication setup
-
-        Args:
-            headless: Run browser in headless mode (False for login)
-            timeout_minutes: Maximum time to wait for login
-
-        Returns:
-            True if authentication successful
-        """
-        print("🔐 Starting authentication setup...")
-        print(f"  Timeout: {timeout_minutes} minutes")
-
-        playwright = None
-        context = None
-
         try:
-            playwright = sync_playwright().start()
-
-            # Launch using factory
-            context = BrowserFactory.launch_persistent_context(
-                playwright,
-                headless=headless
-            )
-
-            # Navigate to NotebookLM
-            page = context.new_page()
-            page.goto("https://notebooklm.google.com", wait_until="domcontentloaded")
-
-            # Check if already authenticated
-            if "notebooklm.google.com" in page.url and "accounts.google.com" not in page.url:
-                print("  ✅ Already authenticated!")
-                self._save_browser_state(context)
-                return True
-
-            # Wait for manual login
-            print("\n  ⏳ Please log in to your Google account...")
-            print(f"  ⏱️  Waiting up to {timeout_minutes} minutes for login...")
-
-            try:
-                # Wait for URL to change to NotebookLM (regex ensures it's the actual domain, not a parameter)
-                timeout_ms = int(timeout_minutes * 60 * 1000)
-                page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=timeout_ms)
-
-                print(f"  ✅ Login successful!")
-
-                # Save authentication state
-                self._save_browser_state(context)
-                self._save_auth_info()
-                return True
-
-            except Exception as e:
-                print(f"  ❌ Authentication timeout: {e}")
-                return False
-
-        except Exception as e:
-            print(f"  ❌ Error: {e}")
-            return False
-
-        finally:
-            # Clean up browser resources
-            if context:
-                try:
-                    context.close()
-                except Exception:
-                    pass
-
-            if playwright:
-                try:
-                    playwright.stop()
-                except Exception:
-                    pass
-
-    def _save_browser_state(self, context: BrowserContext):
-        """Save browser state to disk"""
-        try:
-            # Save storage state (cookies, localStorage)
-            context.storage_state(path=str(self.state_file))
-            print(f"  💾 Saved browser state to: {self.state_file}")
-        except Exception as e:
-            print(f"  ❌ Failed to save browser state: {e}")
-            raise
-
-    def _save_auth_info(self):
-        """Save authentication metadata"""
-        try:
-            info = {
-                'authenticated_at': time.time(),
-                'authenticated_at_iso': time.strftime('%Y-%m-%d %H:%M:%S')
-            }
-            with open(self.auth_info_file, 'w') as f:
-                json.dump(info, f, indent=2)
+            with open(self.AUTH_INFO_FILE) as f:
+                info = json.load(f)
+                return info.get("authenticated", False)
         except Exception:
-            pass  # Non-critical
+            return False
 
-    def clear_auth(self) -> bool:
-        """
-        Clear all authentication data
-
-        Returns:
-            True if cleared successfully
-        """
-        print("🗑️ Clearing authentication data...")
+    def get_auth_info(self) -> dict:
+        """Get authentication info"""
+        if not self.AUTH_INFO_FILE.exists():
+            return {"authenticated": False}
 
         try:
-            # Remove browser state
-            if self.state_file.exists():
-                self.state_file.unlink()
-                print("  ✅ Removed browser state")
+            with open(self.AUTH_INFO_FILE) as f:
+                return json.load(f)
+        except Exception:
+            return {"authenticated": False}
 
-            # Remove auth info
-            if self.auth_info_file.exists():
-                self.auth_info_file.unlink()
-                print("  ✅ Removed auth info")
+    def _save_auth_info(self, authenticated: bool, email: str = None):
+        """Save authentication info"""
+        info = {
+            "authenticated": authenticated,
+            "timestamp": datetime.now().isoformat(),
+            "email": email
+        }
+        with open(self.AUTH_INFO_FILE, 'w') as f:
+            json.dump(info, f, indent=2)
 
-            # Clear entire browser state directory
-            if self.browser_state_dir.exists():
-                shutil.rmtree(self.browser_state_dir)
-                self.browser_state_dir.mkdir(parents=True, exist_ok=True)
-                print("  ✅ Cleared browser data")
+    def _save_session_id(self, session_id: str):
+        """Save session ID for future use"""
+        AGENT_BROWSER_SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(AGENT_BROWSER_SESSION_FILE, 'w') as f:
+            f.write(session_id)
 
-            return True
+    def _load_session_id(self) -> str:
+        """Load saved session ID"""
+        if AGENT_BROWSER_SESSION_FILE.exists():
+            with open(AGENT_BROWSER_SESSION_FILE) as f:
+                return f.read().strip()
+        return None
 
-        except Exception as e:
-            print(f"  ❌ Error clearing auth: {e}")
+    def setup(self):
+        """Interactive Google authentication setup"""
+        print("🔐 Setting up Google authentication...")
+        print("   A browser window will open for you to log in.")
+        print()
+
+        client = AgentBrowserClient(session_id="notebooklm")
+
+        try:
+            client.connect()
+
+            # Navigate to NotebookLM (will redirect to Google login if needed)
+            client.navigate("https://notebooklm.google.com")
+            time.sleep(2)
+
+            snapshot = client.snapshot()
+
+            if client.check_auth(snapshot):
+                print("📄 Current page state:")
+                print(snapshot[:1000])
+                print()
+                print("⏳ Please complete Google login in the browser window...")
+                print("   (This script will wait for you to finish)")
+
+                # Poll until authenticated
+                for _ in range(300):  # 5 minute timeout
+                    time.sleep(2)
+                    snapshot = client.snapshot()
+
+                    if not client.check_auth(snapshot):
+                        # Check if we're on NotebookLM
+                        if "notebooklm" in snapshot.lower() or "notebook" in snapshot.lower():
+                            print()
+                            print("✅ Authentication successful!")
+                            self._save_auth_info(authenticated=True)
+                            self._save_session_id(client.session_id)
+                            return True
+
+                print()
+                print("❌ Authentication timeout")
+                return False
+            else:
+                # Already authenticated
+                print("✅ Already authenticated!")
+                self._save_auth_info(authenticated=True)
+                self._save_session_id(client.session_id)
+                return True
+
+        except AgentBrowserError as e:
+            print(f"❌ [{e.code}]: {e.message}")
+            print(f"🔧 Recovery: {e.recovery}")
             return False
+        finally:
+            client.disconnect()
 
-    def re_auth(self, headless: bool = False, timeout_minutes: int = 10) -> bool:
-        """
-        Perform re-authentication (clear and setup)
-
-        Args:
-            headless: Run browser in headless mode
-            timeout_minutes: Login timeout in minutes
-
-        Returns:
-            True if successful
-        """
-        print("🔄 Starting re-authentication...")
-
-        # Clear existing auth
-        self.clear_auth()
-
-        # Setup new auth
-        return self.setup_auth(headless, timeout_minutes)
-
-    def validate_auth(self) -> bool:
-        """
-        Validate that stored authentication works
-        Uses persistent context to match actual usage pattern
-
-        Returns:
-            True if authentication is valid
-        """
-        if not self.is_authenticated():
-            return False
-
+    def validate(self) -> bool:
+        """Validate current authentication is still valid"""
         print("🔍 Validating authentication...")
 
-        playwright = None
-        context = None
-
-        try:
-            playwright = sync_playwright().start()
-
-            # Launch using factory
-            context = BrowserFactory.launch_persistent_context(
-                playwright,
-                headless=True
-            )
-
-            # Try to access NotebookLM
-            page = context.new_page()
-            page.goto("https://notebooklm.google.com", wait_until="domcontentloaded", timeout=30000)
-
-            # Check if we can access NotebookLM
-            if "notebooklm.google.com" in page.url and "accounts.google.com" not in page.url:
-                print("  ✅ Authentication is valid")
-                return True
-            else:
-                print("  ❌ Authentication is invalid (redirected to login)")
-                return False
-
-        except Exception as e:
-            print(f"  ❌ Validation failed: {e}")
+        session_id = self._load_session_id()
+        if not session_id:
+            print("❌ No saved session")
             return False
 
+        client = AgentBrowserClient(session_id=session_id)
+
+        try:
+            client.connect()
+            client.navigate("https://notebooklm.google.com")
+            time.sleep(2)
+
+            snapshot = client.snapshot()
+
+            if client.check_auth(snapshot):
+                print("❌ Authentication expired")
+                self._save_auth_info(authenticated=False)
+                return False
+            else:
+                print("✅ Authentication valid")
+                self._save_auth_info(authenticated=True)
+                return True
+
+        except AgentBrowserError as e:
+            print(f"⚠️ Validation error: {e.message}")
+            return False
         finally:
-            if context:
-                try:
-                    context.close()
-                except Exception:
-                    pass
-            if playwright:
-                try:
-                    playwright.stop()
-                except Exception:
-                    pass
+            client.disconnect()
+
+    def clear(self):
+        """Clear all authentication data"""
+        print("🧹 Clearing authentication data...")
+
+        if self.AUTH_INFO_FILE.exists():
+            self.AUTH_INFO_FILE.unlink()
+            print("   ✓ Removed auth_info.json")
+
+        if AGENT_BROWSER_SESSION_FILE.exists():
+            AGENT_BROWSER_SESSION_FILE.unlink()
+            print("   ✓ Removed session_id")
+
+        print("✅ Authentication data cleared")
+        print("   Note: Browser profile preserved. Run 'reauth' for full reset.")
+
+    def status(self):
+        """Show current authentication status"""
+        info = self.get_auth_info()
+
+        print("🔐 Authentication Status")
+        print("=" * 40)
+
+        if info.get("authenticated"):
+            print(f"   Status: ✅ Authenticated")
+            print(f"   Since: {info.get('timestamp', 'Unknown')}")
+            if info.get('email'):
+                print(f"   Email: {info.get('email')}")
+        else:
+            print(f"   Status: ❌ Not authenticated")
+            print(f"   Run: python scripts/run.py auth_manager.py setup")
+
+        session_id = self._load_session_id()
+        if session_id:
+            print(f"   Session: {session_id}")
 
 
 def main():
-    """Command-line interface for authentication management"""
     parser = argparse.ArgumentParser(description='Manage NotebookLM authentication')
-
-    subparsers = parser.add_subparsers(dest='command', help='Commands')
-
-    # Setup command
-    setup_parser = subparsers.add_parser('setup', help='Setup authentication')
-    setup_parser.add_argument('--headless', action='store_true', help='Run in headless mode')
-    setup_parser.add_argument('--timeout', type=float, default=10, help='Login timeout in minutes (default: 10)')
-
-    # Status command
-    subparsers.add_parser('status', help='Check authentication status')
-
-    # Validate command
-    subparsers.add_parser('validate', help='Validate authentication')
-
-    # Clear command
-    subparsers.add_parser('clear', help='Clear authentication')
-
-    # Re-auth command
-    reauth_parser = subparsers.add_parser('reauth', help='Re-authenticate (clear + setup)')
-    reauth_parser.add_argument('--timeout', type=float, default=10, help='Login timeout in minutes (default: 10)')
+    parser.add_argument('command', choices=['setup', 'status', 'validate', 'reauth', 'clear'],
+                       help='Command to run')
 
     args = parser.parse_args()
-
-    # Initialize manager
     auth = AuthManager()
 
-    # Execute command
     if args.command == 'setup':
-        if auth.setup_auth(headless=args.headless, timeout_minutes=args.timeout):
-            print("\n✅ Authentication setup complete!")
-            print("You can now use ask_question.py to query NotebookLM")
-        else:
-            print("\n❌ Authentication setup failed")
-            exit(1)
-
+        success = auth.setup()
+        sys.exit(0 if success else 1)
     elif args.command == 'status':
-        info = auth.get_auth_info()
-        print("\n🔐 Authentication Status:")
-        print(f"  Authenticated: {'Yes' if info['authenticated'] else 'No'}")
-        if info.get('state_age_hours'):
-            print(f"  State age: {info['state_age_hours']:.1f} hours")
-        if info.get('authenticated_at_iso'):
-            print(f"  Last auth: {info['authenticated_at_iso']}")
-        print(f"  State file: {info['state_file']}")
-
+        auth.status()
     elif args.command == 'validate':
-        if auth.validate_auth():
-            print("Authentication is valid and working")
-        else:
-            print("Authentication is invalid or expired")
-            print("Run: auth_manager.py setup")
-
-    elif args.command == 'clear':
-        if auth.clear_auth():
-            print("Authentication cleared")
-
+        success = auth.validate()
+        sys.exit(0 if success else 1)
     elif args.command == 'reauth':
-        if auth.re_auth(timeout_minutes=args.timeout):
-            print("\n✅ Re-authentication complete!")
-        else:
-            print("\n❌ Re-authentication failed")
-            exit(1)
-
-    else:
-        parser.print_help()
+        auth.clear()
+        success = auth.setup()
+        sys.exit(0 if success else 1)
+    elif args.command == 'clear':
+        auth.clear()
 
 
 if __name__ == "__main__":
