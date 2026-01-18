@@ -80,6 +80,19 @@ class SkillEnvironment:
                             cwd=str(self.skill_dir)
                         )
                         print("✅ Node.js dependencies installed")
+                        print("🌐 Installing Playwright browsers...")
+                        try:
+                            subprocess.run(
+                                ["npm", "run", "install-browsers"],
+                                check=True,
+                                capture_output=True,
+                                text=True,
+                                cwd=str(self.skill_dir)
+                            )
+                            print("✅ Playwright browsers installed")
+                        except subprocess.CalledProcessError as e:
+                            print(f"⚠️ Warning: browser install failed: {e}")
+                            print("   You may need to run manually: npm run install-browsers")
                     except subprocess.CalledProcessError as e:
                         print(f"⚠️ Warning: npm install failed: {e}")
                         print("   Ensure Node.js and npm are installed")

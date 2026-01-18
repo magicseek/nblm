@@ -178,7 +178,7 @@ The virtual environment is automatically managed:
 - First run creates `.venv` automatically
 - Dependencies install automatically
 - Node.js dependencies install automatically
-- agent-browser uses a named `--session` to persist auth between commands
+- agent-browser daemon starts on demand and keeps browser state in memory
 - Everything isolated in skill directory
 
 Manual setup (only if automatic fails):
@@ -187,7 +187,7 @@ python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
 npm install
-npx agent-browser install
+npm run install-browsers
 ```
 
 ## Data Storage
@@ -195,8 +195,7 @@ npx agent-browser install
 All data stored in `~/.claude/skills/notebooklm/data/`:
 - `library.json` - Notebook metadata
 - `auth_info.json` - Authentication status
-- `agent_browser/profile/` - Browser profile and session data
-- `agent_browser/session_id` - Current CLI session ID
+- `agent_browser/session_id` - Current daemon session ID
 
 **Security:** Protected by `.gitignore`, never commit to git.
 
@@ -238,7 +237,7 @@ Synthesize and respond to user
 |---------|----------|
 | ModuleNotFoundError | Use `run.py` wrapper |
 | Authentication fails | Browser must be visible for setup! --show-browser |
-| CLI_UNAVAILABLE | Ensure Node.js/npm installed, run `npm install`, retry |
+| DAEMON_UNAVAILABLE | Ensure Node.js/npm installed, run `npm install`, retry |
 | AUTH_REQUIRED | Run `python scripts/run.py auth_manager.py setup` |
 | ELEMENT_NOT_FOUND | Verify notebook URL and re-run with fresh page load |
 | Rate limit (50/day) | Wait or switch Google account |

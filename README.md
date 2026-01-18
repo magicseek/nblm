@@ -83,10 +83,10 @@ git clone https://github.com/PleasePrompto/notebooklm-skill notebooklm
 When you first use the skill, it automatically:
 - Creates an isolated Python environment (`.venv`)
 - Installs Python and Node.js dependencies (including `agent-browser`)
-- Prepares browser automation via Playwright
+- Starts the agent-browser daemon as needed for automation
 - Everything stays contained in the skill folder
 
-**Note:** If Playwright browsers are missing, run `npx agent-browser install` in the skill folder.
+**Note:** If Playwright browsers are missing, run `npm run install-browsers` in the skill folder.
 
 ---
 
@@ -247,7 +247,7 @@ Uses realistic typing speeds and interaction patterns to avoid detection.
 ## Technical Details
 
 ### Core Technology
-- **agent-browser**: Browser automation CLI (Playwright-based)
+- **agent-browser**: Browser automation daemon (Playwright-based)
 - **Python**: Implementation language for this skill
 - **Stealth techniques**: Human-like typing and interaction patterns
 
@@ -255,7 +255,7 @@ Note: The MCP server uses a separate TypeScript implementation.
 
 ### Dependencies
 - **python-dotenv==1.0.0**: Environment configuration
-- **agent-browser** (npm): Browser automation CLI
+- **agent-browser** (npm): Browser automation daemon
 - Automatically installed in `.venv` on first use
 
 ### Data Storage
@@ -349,7 +349,7 @@ python -m venv .venv
 source .venv/bin/activate  # or .venv\Scripts\activate on Windows
 pip install -r requirements.txt
 npm install
-npx agent-browser install
+npm run install-browsers
 ```
 
 ---

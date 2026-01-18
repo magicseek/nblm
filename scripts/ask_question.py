@@ -8,6 +8,7 @@ import argparse
 import sys
 import time
 import re
+from typing import Optional
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -29,28 +30,32 @@ FOLLOW_UP_REMINDER = (
 
 def find_input_ref(client: AgentBrowserClient, snapshot: str) -> str:
     """Find the query input element ref"""
+    # Prefer the main chat input; skip disabled fields.
+    for line in snapshot.split('\n'):
+        line_lower = line.lower()
+        if "textbox" in line_lower and "query box" in line_lower and "disabled" not in line_lower:
+            match = re.search(r'\[ref=(\w+)\]', line)
+            if match:
+                return match.group(1)
+
     # Try common patterns for NotebookLM input
-    input_ref = client.find_ref_by_role(snapshot, "textbox", "ask")
-    if input_ref:
-        return input_ref
+    for hint in ("ask", "query", "message", "chat"):
+        input_ref = client.find_ref_by_role(snapshot, "textbox", hint)
+        if input_ref:
+            return input_ref
 
-    input_ref = client.find_ref_by_role(snapshot, "textbox", "query")
-    if input_ref:
-        return input_ref
-
-    input_ref = client.find_ref_by_role(snapshot, "textbox", "source")
-    if input_ref:
-        return input_ref
-
-    # Fallback: find any textbox
-    input_ref = client.find_ref_by_role(snapshot, "textbox")
-    if input_ref:
-        return input_ref
+    # Fallback: find any enabled textbox
+    for line in snapshot.split('\n'):
+        line_lower = line.lower()
+        if "textbox" in line_lower and "disabled" not in line_lower:
+            match = re.search(r'\[ref=(\w+)\]', line)
+            if match:
+                return match.group(1)
 
     return None
 
 
-def wait_for_answer(client: AgentBrowserClient, timeout: int = 120) -> str:
+def wait_for_answer(client: AgentBrowserClient, question: str, timeout: int = 120) -> str:
     """Wait for NotebookLM answer to stabilize"""
     deadline = time.time() + timeout
     last_snapshot = None
@@ -68,7 +73,7 @@ def wait_for_answer(client: AgentBrowserClient, timeout: int = 120) -> str:
         if snapshot == last_snapshot:
             stable_count += 1
             if stable_count >= 3:
-                return extract_answer(snapshot)
+                return extract_answer(snapshot, question)
         else:
             stable_count = 0
             last_snapshot = snapshot
@@ -82,32 +87,67 @@ def wait_for_answer(client: AgentBrowserClient, timeout: int = 120) -> str:
     )
 
 
-def extract_answer(snapshot: str) -> str:
+def extract_answer(snapshot: str, question: str) -> str:
     """Extract the latest answer from accessibility snapshot"""
-    # Look for response content in snapshot
-    # NotebookLM typically has responses in specific regions
-    lines = snapshot.split('\n')
+    lines = [line.rstrip() for line in snapshot.split('\n') if line.strip()]
+    question_lower = question.lower()
+    start_idx = None
 
-    # Find the last substantial text block (likely the answer)
+    def normalize(line: str) -> str:
+        return line.lstrip('- ').lstrip().lstrip("'").strip()
+
+    for idx, line in enumerate(lines):
+        normalized = normalize(line)
+        if normalized.lower().startswith('heading ') and question_lower in normalized.lower():
+            start_idx = idx
+
+    if start_idx is None:
+        return snapshot
+
+    def extract_text(line: str) -> Optional[str]:
+        normalized = normalize(line)
+        if normalized.startswith(("button", "link", "textbox", "contentinfo")):
+            return None
+        if normalized.startswith(("text:", "paragraph:", "strong:", "code:")) and ':' in normalized:
+            value = normalized.split(':', 1)[1].strip()
+            if value.startswith('"') and value.endswith('"'):
+                value = value[1:-1]
+            value = value.replace('\\\"', '"').replace('\\n', ' ')
+            value = re.sub(r'\\[ref=[^\\]]+\\]', '', value)
+            value = re.sub(r'\\[nth=[^\\]]+\\]', '', value)
+            return value.strip()
+        if normalized.startswith("heading"):
+            if 'heading "' in normalized:
+                value = normalized.split('heading "', 1)[1]
+                if '"' in value:
+                    value = value.rsplit('"', 1)[0]
+                value = value.replace('\\\"', '"')
+                value = re.sub(r'\\[ref=[^\\]]+\\]', '', value)
+                value = re.sub(r'\\[nth=[^\\]]+\\]', '', value)
+                return value.strip()
+        if ':' in normalized:
+            return normalized.split(':', 1)[1].strip()
+        return None
+
     answer_lines = []
-    in_response = False
+    for line in lines[start_idx + 1:]:
+        normalized = normalize(line)
+        if normalized.lower().startswith('textbox "query box"') or normalized.lower().startswith('contentinfo'):
+            break
+        if normalized.lower().startswith('heading ') and question_lower in normalized.lower():
+            break
+        text = extract_text(line)
+        if text:
+            cleaned = text.strip()
+            if cleaned.startswith(". "):
+                cleaned = cleaned[2:].lstrip()
+            cleaned = re.sub(r'\[ref=[^\]]+\]', '', cleaned)
+            cleaned = re.sub(r'\[nth=[^\]]+\]', '', cleaned)
+            if cleaned in {".", ",", ";", ":"}:
+                continue
+            answer_lines.append(cleaned)
 
-    for line in lines:
-        # Look for response indicators
-        if 'response' in line.lower() or 'answer' in line.lower() or 'message' in line.lower():
-            in_response = True
-
-        if in_response and line.strip():
-            # Extract text content (remove ref markers)
-            clean_line = re.sub(r'\[ref=\w+\]', '', line).strip()
-            if clean_line and len(clean_line) > 10:
-                answer_lines.append(clean_line)
-
-    if answer_lines:
-        return '\n'.join(answer_lines)
-
-    # Fallback: return relevant portion of snapshot
-    return snapshot
+    return '\n'.join(answer_lines).strip() or snapshot
 
 
 def ask_notebooklm(question: str, notebook_url: str, show_browser: bool = False) -> dict:
@@ -180,7 +220,7 @@ def ask_notebooklm(question: str, notebook_url: str, show_browser: bool = False)
         print("⏳ Waiting for answer...")
         time.sleep(2)  # Initial wait
 
-        answer = wait_for_answer(client, timeout=120)
+        answer = wait_for_answer(client, question, timeout=120)
 
         print("✅ Got answer!")
 

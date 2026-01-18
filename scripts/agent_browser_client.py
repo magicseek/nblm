@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
 """
 Agent Browser Client for NotebookLM Skill
-Python wrapper that drives the agent-browser CLI with a persistent session.
+Python client that communicates with agent-browser daemon via Unix socket
 """
 
 import json
 import os
 import re
-import shutil
+import socket
 import subprocess
 import time
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from config import DEFAULT_SESSION_ID, SKILL_DIR
+from config import (
+    AGENT_BROWSER_SOCKET_DIR,
+    DEFAULT_SESSION_ID,
+    SKILL_DIR
+)
 
 
 class AgentBrowserError(Exception):
@@ -36,200 +40,210 @@ class AgentBrowserError(Exception):
 
 
 class AgentBrowserClient:
-    """Python client for agent-browser CLI sessions"""
+    """Python client for agent-browser daemon"""
 
     def __init__(self, session_id: str = None, headed: bool = False):
         self.session_id = session_id or DEFAULT_SESSION_ID
+        self.socket_path = AGENT_BROWSER_SOCKET_DIR / f"agent-browser-{self.session_id}.sock"
+        self.socket: Optional[socket.socket] = None
+        self._buffer = b""
+        self._command_id = 0
         self.headed = headed
-        self._cli_prefix = self._resolve_cli()
-        self._headed_process: Optional[subprocess.Popen] = None
-        self._last_url: Optional[str] = None
 
     def connect(self) -> bool:
-        """Validate CLI availability"""
-        if not self._cli_prefix:
+        """Connect to daemon, starting it if necessary"""
+        if self.headed and self._daemon_is_running():
+            self._stop_daemon()
+
+        if not self._daemon_is_running():
+            self._start_daemon()
+
+        try:
+            self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.socket.connect(str(self.socket_path))
+            self.socket.settimeout(120)  # 2 minute timeout for long operations
+            self.launch(headless=not self.headed)
+            return True
+        except ConnectionRefusedError:
             raise AgentBrowserError(
-                code="CLI_UNAVAILABLE",
-                message="agent-browser CLI not found",
-                recovery="Run 'npm install' in the skill directory"
+                code="DAEMON_UNAVAILABLE",
+                message="Cannot connect to browser daemon",
+                recovery="Check Node.js installation, ensure agent-browser is installed"
             )
-        return True
 
     def disconnect(self):
-        """Close the browser for this session"""
-        self._stop_headed_process()
+        """Close connection to daemon without stopping it"""
+        if self.socket:
+            try:
+                self.socket.close()
+            except Exception:
+                pass
+            self.socket = None
+
+    def launch(self, headless: bool = True) -> Dict[str, Any]:
+        """Launch browser in daemon"""
+        return self._send_command("launch", {"headless": headless})
+
+    def _daemon_is_running(self) -> bool:
+        """Check if daemon socket exists and is responsive"""
+        if not self.socket_path.exists():
+            return False
         try:
-            self._run_command(["close"], expect_json=False, timeout=30)
+            test_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            test_socket.connect(str(self.socket_path))
+            test_socket.close()
+            return True
         except Exception:
-            pass
+            return False
 
-    def _resolve_cli(self) -> Optional[list]:
-        """Resolve the agent-browser CLI path"""
-        if os.name == "nt":
-            local_cli = SKILL_DIR / "node_modules" / ".bin" / "agent-browser.cmd"
-        else:
-            local_cli = SKILL_DIR / "node_modules" / ".bin" / "agent-browser"
+    def _start_daemon(self):
+        """Start the agent-browser daemon"""
+        print("🚀 Starting browser daemon...")
 
-        if local_cli.exists():
-            return [str(local_cli)]
+        env = os.environ.copy()
+        env["AGENT_BROWSER_SESSION"] = self.session_id
 
-        system_cli = shutil.which("agent-browser")
-        if system_cli:
-            return [system_cli]
+        daemon_script = SKILL_DIR / "node_modules" / "agent-browser" / "dist" / "daemon.js"
 
-        return None
+        if not daemon_script.exists():
+            raise AgentBrowserError(
+                code="DAEMON_UNAVAILABLE",
+                message="agent-browser daemon script not found",
+                recovery="Run 'npm install' in the skill directory"
+            )
 
-    def _base_args(self) -> list:
-        args = []
-        if self.session_id:
-            args.extend(["--session", self.session_id])
-        if self.headed:
-            args.append("--headed")
-        return args
-
-    def _start_headed_session(self, url: str):
-        """Start a headed browser process that stays open for user login"""
-        if self._headed_process and self._headed_process.poll() is None:
-            return
-
-        cmd = self._cli_prefix + ["open", url] + self._base_args()
-        self._headed_process = subprocess.Popen(
-            cmd,
+        subprocess.Popen(
+            ["node", str(daemon_script)],
             cwd=str(SKILL_DIR),
+            env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
 
-    def _stop_headed_process(self):
-        """Stop any background headed browser process"""
-        if not self._headed_process:
-            return
-        if self._headed_process.poll() is None:
-            try:
-                self._headed_process.terminate()
-                self._headed_process.wait(timeout=5)
-            except Exception:
-                self._headed_process.kill()
-        self._headed_process = None
+        # Wait for daemon to be ready
+        for _ in range(30):  # 30 second timeout
+            time.sleep(1)
+            if self._daemon_is_running():
+                print("✅ Daemon started")
+                return
 
-    def _parse_json_output(self, output: str) -> Dict[str, Any]:
-        """Parse JSON output from agent-browser"""
-        for line in reversed(output.splitlines()):
-            line = line.strip()
-            if line.startswith("{") and line.endswith("}"):
-                return json.loads(line)
         raise AgentBrowserError(
-            code="CLI_ERROR",
-            message="Failed to parse agent-browser output",
-            recovery="Re-run command or enable --debug for details"
+            code="DAEMON_UNAVAILABLE",
+            message="Daemon failed to start within timeout",
+            recovery="Check Node.js installation and agent-browser dependency"
         )
 
-    def _run_command(
-        self,
-        args: list,
-        expect_json: bool = True,
-        timeout: int = 120
-    ) -> Dict[str, Any]:
-        """Run an agent-browser CLI command"""
-        if not self._cli_prefix:
+    def _stop_daemon(self):
+        """Stop the daemon for this session"""
+        try:
+            self._send_command("close")
+        except AgentBrowserError:
+            pass
+        for _ in range(10):
+            time.sleep(0.5)
+            if not self.socket_path.exists():
+                return
+
+    def _send_command(self, action: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Send command to daemon and receive response"""
+        if not self.socket:
             raise AgentBrowserError(
-                code="CLI_UNAVAILABLE",
-                message="agent-browser CLI not found",
-                recovery="Run 'npm install' in the skill directory"
+                code="NOT_CONNECTED",
+                message="Not connected to daemon",
+                recovery="Call connect() first"
             )
 
-        cmd = self._cli_prefix + args + self._base_args()
-        if expect_json:
-            cmd.append("--json")
+        self._command_id += 1
+        command = {"id": str(self._command_id), "action": action}
+        if params:
+            command.update(params)
 
-        result = subprocess.run(
-            cmd,
-            cwd=str(SKILL_DIR),
-            capture_output=True,
-            text=True,
-            timeout=timeout
-        )
+        # Send JSON terminated by newline
+        message = json.dumps(command) + "\n"
+        self.socket.sendall(message.encode())
 
-        if result.returncode != 0:
-            message = result.stderr.strip() or result.stdout.strip() or "agent-browser failed"
-            raise AgentBrowserError(
-                code="CLI_ERROR",
-                message=message,
-                recovery="Ensure agent-browser is installed and browsers are available"
-            )
-
-        if not expect_json:
-            return {"stdout": result.stdout.strip()}
-
-        payload = self._parse_json_output(result.stdout)
-        if not payload.get("success", True):
-            error = payload.get("error", "Unknown error")
+        # Read response
+        response = self._read_response()
+        if not response.get("success", False):
             raise AgentBrowserError(
                 code="CLI_ERROR",
-                message=str(error),
-                recovery="Retry the command or run with --debug"
+                message=str(response.get("error", "Unknown error")),
+                recovery="Retry the command or restart the daemon"
             )
 
-        return payload.get("data", payload)
+        return response.get("data", {})
 
-    def _ref_arg(self, ref: str) -> str:
-        return ref if ref.startswith("@") else f"@{ref}"
+    def _read_response(self) -> Dict[str, Any]:
+        """Read JSON response from daemon"""
+        while True:
+            # Check buffer for complete message
+            if b"\n" in self._buffer:
+                line, self._buffer = self._buffer.split(b"\n", 1)
+                return json.loads(line.decode())
+
+            # Read more data
+            try:
+                chunk = self.socket.recv(65536)
+                if not chunk:
+                    raise AgentBrowserError(
+                        code="CONNECTION_CLOSED",
+                        message="Daemon closed connection",
+                        recovery="Reconnect to daemon"
+                    )
+                self._buffer += chunk
+            except socket.timeout:
+                raise AgentBrowserError(
+                    code="TIMEOUT",
+                    message="Daemon response timeout",
+                    recovery="Operation took too long, try again"
+                )
 
     # === Browser Actions ===
 
     def navigate(self, url: str) -> Dict[str, Any]:
         """Navigate to URL"""
         print(f"🌐 Navigating to {url[:50]}...")
-        self._last_url = url
-        if self.headed:
-            self._start_headed_session(url)
-            return {"url": url}
-        return self._run_command(["open", url], expect_json=True)
+        response = self._send_command("navigate", {"url": url})
+        return response
 
-    def snapshot(self, prune: bool = True) -> str:
+    def snapshot(self, prune: bool = True, interactive: bool = False) -> str:
         """Get accessibility tree snapshot of current page"""
-        args = ["snapshot"]
-        if prune:
-            args.append("-c")
-        for attempt in range(3):
-            try:
-                response = self._run_command(args, expect_json=True)
-                return response.get("snapshot", "")
-            except AgentBrowserError as exc:
-                if "Browser not launched" in exc.message and self._last_url:
-                    self._start_headed_session(self._last_url)
-                    if attempt < 2:
-                        time.sleep(2)
-                        continue
-                raise
+        params = {"compact": prune}
+        if interactive:
+            params["interactive"] = True
+        response = self._send_command("snapshot", params)
+
+        return response.get("snapshot", "")
 
     def click(self, ref: str) -> Dict[str, Any]:
         """Click element by ref"""
         print(f"🖱️ Clicking ref={ref}")
-        return self._run_command(["click", self._ref_arg(ref)], expect_json=True)
+        response = self._send_command("click", {"selector": f"@{ref}"})
+        return response
 
     def fill(self, ref: str, text: str) -> Dict[str, Any]:
         """Fill input field by ref (clears first)"""
         print(f"⌨️ Filling ref={ref}")
-        return self._run_command(["fill", self._ref_arg(ref), text], expect_json=True)
+        response = self._send_command("fill", {"selector": f"@{ref}", "value": text})
+        return response
 
     def type_text(self, ref: str, text: str, submit: bool = False) -> Dict[str, Any]:
         """Type text into element (appends to existing)"""
         print(f"⌨️ Typing into ref={ref}")
-        response = self._run_command(["type", self._ref_arg(ref), text], expect_json=True)
+        response = self._send_command("type", {"selector": f"@{ref}", "text": text})
         if submit:
             self.press_key("Enter")
         return response
 
     def press_key(self, key: str) -> Dict[str, Any]:
         """Press keyboard key"""
-        return self._run_command(["press", key], expect_json=True)
+        response = self._send_command("press", {"key": key})
+        return response
 
-    def wait_for(self, text: str = None, timeout: int = 30) -> Dict[str, Any]:
-        """Wait for text to appear on page"""
-        if text:
-            return self._run_command(["wait", "--text", text], expect_json=True, timeout=timeout + 5)
-        return self._run_command(["wait", str(timeout * 1000)], expect_json=True, timeout=timeout + 5)
+    def wait_for(self, timeout: int = 30) -> Dict[str, Any]:
+        """Wait for time in seconds"""
+        response = self._send_command("wait", {"timeout": timeout * 1000})
+        return response
 
     # === Utility Methods ===
 

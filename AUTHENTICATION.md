@@ -1,12 +1,12 @@
 # Authentication Notes
 
-This skill uses the `agent-browser` CLI to automate NotebookLM. Authentication is handled by a visible browser session and persisted by the CLI under a named session.
+This skill uses the `agent-browser` daemon to automate NotebookLM. Authentication is handled by a visible browser session and kept in memory by the daemon while it runs.
 
 ## How Authentication Works
 
-- `auth_manager.py setup` launches a headed browser.
+- `auth_manager.py setup` launches a headed browser via the daemon.
 - You log in to Google manually.
-- The `agent-browser` session (default: `notebooklm`) keeps cookies/storage for subsequent commands.
+- The daemon keeps cookies/storage in memory for subsequent commands.
 - The skill stores minimal metadata in `data/auth_info.json` and `data/agent_browser/session_id`.
 
 ## Troubleshooting Authentication
@@ -25,7 +25,7 @@ This skill uses the `agent-browser` CLI to automate NotebookLM. Authentication i
 3. **Missing browsers**
    ```bash
    npm install
-   npx agent-browser install
+   npm run install-browsers
    ```
 
 ## Security Notes

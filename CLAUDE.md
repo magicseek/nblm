@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-NotebookLM Claude Code Skill - enables Claude Code to query Google NotebookLM for source-grounded, citation-backed answers. Uses the agent-browser CLI with a named session to persist authentication across commands.
+NotebookLM Claude Code Skill - enables Claude Code to query Google NotebookLM for source-grounded, citation-backed answers. Uses the agent-browser daemon (Node.js) and a Unix socket protocol for automation.
 
-**Session Model:** Stateless per question, but agent-browser keeps a session profile keyed by `--session`.
+**Session Model:** Stateless per question; the daemon keeps browser state in memory until it is stopped.
 
 ## Development Commands
 
@@ -29,7 +29,7 @@ python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
 npm install
-npx agent-browser install
+npm run install-browsers
 ```
 
 ### Common Script Commands
@@ -64,7 +64,7 @@ scripts/
 ├── ask_question.py       # Core query logic - uses agent-browser client
 ├── auth_manager.py       # Google authentication and session persistence
 ├── notebook_manager.py   # CRUD operations for notebook library (library.json)
-├── agent_browser_client.py # CLI wrapper for agent-browser --session
+├── agent_browser_client.py # Unix socket client for agent-browser daemon
 ├── cleanup_manager.py    # Data cleanup with preservation options
 ├── config.py             # Configuration management
 └── setup_environment.py  # Automatic venv and dependency installation
@@ -80,13 +80,13 @@ references/               # Extended documentation
 └── usage_patterns.md
 ```
 
-**Key Flow:** `run.py` → ensures Python/Node deps → `ask_question.py` → `agent_browser_client.py` → `agent-browser` CLI
+**Key Flow:** `run.py` → ensures Python/Node deps → `ask_question.py` → `agent_browser_client.py` → agent-browser daemon
 
 ## Key Dependencies
 
 - **python-dotenv==1.0.0**: Environment configuration
-- **agent-browser** (npm): Browser automation CLI and accessibility snapshots
-- **Node.js**: Required to run the CLI
+- **agent-browser** (npm): Browser automation daemon
+- **Node.js**: Required to run the daemon
 
 ## Testing
 

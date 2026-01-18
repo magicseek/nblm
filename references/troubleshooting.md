@@ -90,10 +90,24 @@ python scripts/run.py cleanup_manager.py --confirm --preserve-library
 python scripts/run.py auth_manager.py reauth
 ```
 
+#### Daemon socket stuck
+**Solution:**
+```bash
+pkill -f daemon.js
+python - <<'PY'
+import tempfile, glob, os
+for path in glob.glob(os.path.join(tempfile.gettempdir(), "agent-browser-*.sock")):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+PY
+```
+
 #### Browser not found error
 **Solution:**
 ```bash
-# Install browsers via agent-browser (automatic)
+# Install browsers via Playwright
 python scripts/run.py auth_manager.py status
 # run.py will install Node deps automatically
 
@@ -101,7 +115,7 @@ python scripts/run.py auth_manager.py status
 cd ~/.claude/skills/notebooklm
 source .venv/bin/activate
 npm install
-npx agent-browser install
+npm run install-browsers
 ```
 
 ### Rate Limiting

@@ -4,6 +4,7 @@ Centralizes constants, selectors, and paths
 """
 
 from pathlib import Path
+import tempfile
 
 # Paths
 SKILL_DIR = Path(__file__).parent.parent
@@ -14,7 +15,7 @@ LIBRARY_FILE = DATA_DIR / "library.json"
 # Agent-browser configuration
 AGENT_BROWSER_PROFILE_DIR = DATA_DIR / "agent_browser" / "profile"
 AGENT_BROWSER_SESSION_FILE = DATA_DIR / "agent_browser" / "session_id"
-AGENT_BROWSER_SOCKET_DIR = Path("/tmp")
+AGENT_BROWSER_SOCKET_DIR = Path(tempfile.gettempdir())
 DEFAULT_SESSION_ID = "notebooklm"
 
 # NotebookLM Selectors

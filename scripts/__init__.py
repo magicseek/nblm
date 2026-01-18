@@ -65,6 +65,12 @@ def ensure_venv_and_run():
                     capture_output=True,
                     cwd=str(skill_dir)
                 )
+                subprocess.run(
+                    ["npm", "run", "install-browsers"],
+                    check=True,
+                    capture_output=True,
+                    cwd=str(skill_dir)
+                )
 
         print("✅ Environment ready! All dependencies isolated in .venv/")
 
