@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-NotebookLM Claude Code Skill - enables Claude Code to query Google NotebookLM for source-grounded, citation-backed answers. Uses the agent-browser daemon (Node.js) for browser automation and accessibility snapshots.
+NotebookLM Claude Code Skill - enables Claude Code to query Google NotebookLM for source-grounded, citation-backed answers. Uses the agent-browser CLI with a named session to persist authentication across commands.
 
-**Session Model:** Stateless - each query opens a fresh page context and returns a single answer.
+**Session Model:** Stateless per question, but agent-browser keeps a session profile keyed by `--session`.
 
 ## Development Commands
 
@@ -29,6 +29,7 @@ python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
 npm install
+npx agent-browser install
 ```
 
 ### Common Script Commands
@@ -59,33 +60,33 @@ python scripts/run.py cleanup_manager.py --preserve-library # Keep notebooks
 
 ```
 scripts/
-├── run.py               # Entry point wrapper - handles venv and npm deps
-├── ask_question.py      # Core query logic - uses agent-browser client
-├── auth_manager.py      # Google authentication and session persistence
-├── notebook_manager.py  # CRUD operations for notebook library (library.json)
-├── agent_browser_client.py # Unix socket client for agent-browser daemon
-├── cleanup_manager.py   # Data cleanup with preservation options
-├── config.py            # Configuration management
-└── setup_environment.py # Automatic venv and dependency installation
+├── run.py                # Entry point wrapper - handles venv and npm deps
+├── ask_question.py       # Core query logic - uses agent-browser client
+├── auth_manager.py       # Google authentication and session persistence
+├── notebook_manager.py   # CRUD operations for notebook library (library.json)
+├── agent_browser_client.py # CLI wrapper for agent-browser --session
+├── cleanup_manager.py    # Data cleanup with preservation options
+├── config.py             # Configuration management
+└── setup_environment.py  # Automatic venv and dependency installation
 
-data/                    # Git-ignored local storage
-├── library.json         # Notebook metadata
-├── auth_info.json       # Authentication status
-└── agent_browser/       # Daemon profile + session state
+data/                     # Git-ignored local storage
+├── library.json          # Notebook metadata
+├── auth_info.json        # Authentication status
+└── agent_browser/        # Session metadata (session_id)
 
-references/              # Extended documentation
+references/               # Extended documentation
 ├── api_reference.md
 ├── troubleshooting.md
 └── usage_patterns.md
 ```
 
-**Key Flow:** `run.py` → ensures Python/Node deps → `ask_question.py` → `agent_browser_client.py` → agent-browser daemon
+**Key Flow:** `run.py` → ensures Python/Node deps → `ask_question.py` → `agent_browser_client.py` → `agent-browser` CLI
 
 ## Key Dependencies
 
 - **python-dotenv==1.0.0**: Environment configuration
-- **agent-browser** (npm): Browser automation daemon and accessibility snapshots
-- **Node.js**: Required to run the daemon
+- **agent-browser** (npm): Browser automation CLI and accessibility snapshots
+- **Node.js**: Required to run the CLI
 
 ## Testing
 
@@ -93,7 +94,7 @@ No automated test suite. Testing is manual/functional via the scripts.
 
 ## Important Notes
 
-- Authentication requires a visible browser session
+- Authentication requires a visible browser session (`--show-browser`)
 - Free tier rate limit: 50 queries/day
 - `data/` directory contains sensitive auth data - never commit
 - Each question is independent (stateless model)

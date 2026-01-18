@@ -188,24 +188,15 @@ Location: `~/.claude/skills/notebooklm/data/`
 data/
 ├── library.json       # Notebook metadata
 ├── auth_info.json     # Auth status
-└── browser_state/     # Browser cookies
-    └── state.json
+└── agent_browser/     # Session metadata
+    └── session_id
 ```
 
 **Security:** Protected by `.gitignore`, never commit.
 
 ## Environment Variables
 
-Optional `.env` file configuration:
-
-```env
-HEADLESS=false           # Browser visibility
-SHOW_BROWSER=false       # Default display
-STEALTH_ENABLED=true     # Human behavior
-TYPING_WPM_MIN=160       # Typing speed
-TYPING_WPM_MAX=240
-DEFAULT_NOTEBOOK_ID=     # Default notebook
-```
+Optional `.env` file configuration is not required for normal usage.
 
 ## Error Handling
 

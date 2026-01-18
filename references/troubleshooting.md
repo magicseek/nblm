@@ -81,7 +81,7 @@ TimeoutError: Waiting for selector failed
 ```bash
 # Kill hanging processes
 pkill -f chromium
-pkill -f chrome
+pkill -f agent-browser
 
 # Clean browser state
 python scripts/run.py cleanup_manager.py --confirm --preserve-library
@@ -93,14 +93,15 @@ python scripts/run.py auth_manager.py reauth
 #### Browser not found error
 **Solution:**
 ```bash
-# Install Chromium via run.py (automatic)
+# Install browsers via agent-browser (automatic)
 python scripts/run.py auth_manager.py status
-# run.py will install Chromium automatically
+# run.py will install Node deps automatically
 
 # Or manual install if needed
 cd ~/.claude/skills/notebooklm
 source .venv/bin/activate
-python -m patchright install chromium
+npm install
+npx agent-browser install
 ```
 
 ### Rate Limiting
@@ -170,7 +171,7 @@ python scripts/run.py notebook_manager.py activate --id correct-id
 
 #### ModuleNotFoundError
 ```
-ModuleNotFoundError: No module named 'patchright'
+ModuleNotFoundError: No module named '...'
 ```
 
 **Solution:**
@@ -261,13 +262,9 @@ python scripts/run.py ask_question.py --question "test" --show-browser
 ```
 
 ### Save screenshots on error
-Add to scripts for debugging:
-```python
-try:
-    # Your code
-except Exception as e:
-    page.screenshot(path=f"error_{timestamp}.png")
-    raise e
+Use agent-browser directly:
+```bash
+agent-browser screenshot --full error.png
 ```
 
 ## Recovery Procedures

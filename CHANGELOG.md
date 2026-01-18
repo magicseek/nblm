@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-01-18
+
+### Added
+- agent-browser CLI integration for faster, token-efficient automation
+- Node.js dependency management via `npm install`
+
+### Changed
+- Authentication and query flow now use agent-browser sessions
+- Python wrapper updated to drive CLI commands with `--session`
+
+### Removed
+- Patchright/Playwright-specific browser helpers and state files
+
 ## [1.3.0] - 2025-11-21
 
 ### Added

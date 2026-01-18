@@ -82,11 +82,11 @@ git clone https://github.com/PleasePrompto/notebooklm-skill notebooklm
 
 When you first use the skill, it automatically:
 - Creates an isolated Python environment (`.venv`)
-- Installs all dependencies including **Google Chrome**
-- Sets up browser automation with Chrome (not Chromium) for maximum reliability
+- Installs Python and Node.js dependencies (including `agent-browser`)
+- Prepares browser automation via Playwright
 - Everything stays contained in the skill folder
 
-**Note:** The setup uses real Chrome instead of Chromium for cross-platform reliability, consistent browser fingerprinting, and better anti-detection with Google services
+**Note:** If Playwright browsers are missing, run `npx agent-browser install` in the skill folder.
 
 ---
 
@@ -106,7 +106,7 @@ Claude will list your available skills including NotebookLM.
 ```
 "Set up NotebookLM authentication"
 ```
-*A Chrome window opens → log in with your Google account*
+*A browser window opens → log in with your Google account*
 
 ### 3. Create your knowledge base
 
@@ -205,7 +205,7 @@ Uses realistic typing speeds and interaction patterns to avoid detection.
 
 | What you say | What happens |
 |--------------|--------------|
-| *"Set up NotebookLM authentication"* | Opens Chrome for Google login |
+| *"Set up NotebookLM authentication"* | Opens a browser for Google login |
 | *"Add [link] to my NotebookLM library"* | Saves notebook with metadata |
 | *"Show my NotebookLM notebooks"* | Lists all saved notebooks |
 | *"Ask my API docs about [topic]"* | Queries the relevant notebook |
@@ -247,15 +247,15 @@ Uses realistic typing speeds and interaction patterns to avoid detection.
 ## Technical Details
 
 ### Core Technology
-- **Patchright**: Browser automation library (Playwright-based)
+- **agent-browser**: Browser automation CLI (Playwright-based)
 - **Python**: Implementation language for this skill
 - **Stealth techniques**: Human-like typing and interaction patterns
 
-Note: The MCP server uses the same Patchright library but via TypeScript/npm ecosystem.
+Note: The MCP server uses a separate TypeScript implementation.
 
 ### Dependencies
-- **patchright==1.55.2**: Browser automation
 - **python-dotenv==1.0.0**: Environment configuration
+- **agent-browser** (npm): Browser automation CLI
 - Automatically installed in `.venv` on first use
 
 ### Data Storage
@@ -266,7 +266,7 @@ All data is stored locally within the skill directory:
 ~/.claude/skills/notebooklm/data/
 ├── library.json       - Your notebook library with metadata
 ├── auth_info.json     - Authentication status info
-└── browser_state/     - Browser cookies and session data
+└── agent_browser/     - Session metadata (session_id)
 ```
 
 **Important Security Note:**
@@ -317,11 +317,11 @@ This is a simpler, Python-based implementation that runs directly as a Claude Sk
 **Can I use both this skill and the MCP server?**
 Yes! They serve different purposes. Use the skill for quick Claude Code integration, use the MCP server for persistent sessions and multi-tool support.
 
-**What if Chrome crashes?**
+**What if the browser crashes?**
 Run: `"Clear NotebookLM browser data"` and try again.
 
 **Is my Google account secure?**
-Chrome runs locally on your machine. Your credentials never leave your computer. Use a dedicated Google account if you're concerned.
+The browser runs locally on your machine. Your credentials never leave your computer. Use a dedicated Google account if you're concerned.
 
 ---
 
@@ -348,6 +348,8 @@ rm -rf .venv
 python -m venv .venv
 source .venv/bin/activate  # or .venv\Scripts\activate on Windows
 pip install -r requirements.txt
+npm install
+npx agent-browser install
 ```
 
 ---
