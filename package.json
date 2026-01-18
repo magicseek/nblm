@@ -1,0 +1,12 @@
+{
+  "name": "notebooklm-skill",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Claude Code skill for NotebookLM integration using agent-browser",
+  "dependencies": {
+    "agent-browser": "github:vercel-labs/agent-browser"
+  },
+  "scripts": {
+    "daemon": "agent-browser daemon"
+  }
+}
