@@ -45,6 +45,30 @@ def ensure_venv():
     return get_venv_python()
 
 
+def ensure_node_deps():
+    """Ensure Node.js dependencies are installed"""
+    skill_dir = Path(__file__).parent.parent
+    package_json = skill_dir / "package.json"
+    node_modules = skill_dir / "node_modules"
+
+    if not package_json.exists():
+        return  # No Node.js dependencies needed
+
+    if not node_modules.exists():
+        print("📦 Installing agent-browser...")
+        result = subprocess.run(
+            ["npm", "install"],
+            cwd=str(skill_dir),
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            print(f"⚠️ npm install failed: {result.stderr}")
+            print("   Please ensure Node.js and npm are installed")
+        else:
+            print("✅ agent-browser installed")
+
+
 def main():
     """Main runner"""
     if len(sys.argv) < 2:
@@ -82,6 +106,7 @@ def main():
 
     # Ensure venv exists and get Python executable
     venv_python = ensure_venv()
+    ensure_node_deps()
 
     # Build command
     cmd = [str(venv_python), str(script_path)] + script_args
