@@ -1,12 +1,7 @@
 #!/usr/bin/env python3
 """
-Simple NotebookLM Question Interface
-Based on MCP server implementation - simplified without sessions
-
-Implements hybrid auth approach:
-- Persistent browser profile (user_data_dir) for fingerprint consistency
-- Manual cookie injection from state.json for session cookies (Playwright bug workaround)
-See: https://github.com/microsoft/playwright/issues/36139
+NotebookLM Question Interface
+Uses agent-browser for token-efficient browser automation
 """
 
 import argparse
@@ -15,176 +10,194 @@ import time
 import re
 from pathlib import Path
 
-from patchright.sync_api import sync_playwright
-
-# Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from auth_manager import AuthManager
 from notebook_manager import NotebookLibrary
-from config import QUERY_INPUT_SELECTORS, RESPONSE_SELECTORS
-from browser_utils import BrowserFactory, StealthUtils
+from agent_browser_client import AgentBrowserClient, AgentBrowserError
 
 
-# Follow-up reminder (adapted from MCP server for stateless operation)
-# Since we don't have persistent sessions, we encourage comprehensive questions
+# Follow-up reminder for comprehensive research
 FOLLOW_UP_REMINDER = (
-    "\n\nEXTREMELY IMPORTANT: Is that ALL you need to know? "
-    "You can always ask another question! Think about it carefully: "
-    "before you reply to the user, review their original request and this answer. "
-    "If anything is still unclear or missing, ask me another comprehensive question "
-    "that includes all necessary context (since each question opens a new browser session)."
+    "\n\n---\n"
+    "**Is that ALL you need to know?** "
+    "You can ask another question! Review the user's original request. "
+    "If anything is unclear or missing, ask a comprehensive follow-up question "
+    "(each question opens a fresh context)."
 )
 
 
-def ask_notebooklm(question: str, notebook_url: str, headless: bool = True) -> str:
+def find_input_ref(client: AgentBrowserClient, snapshot: str) -> str:
+    """Find the query input element ref"""
+    # Try common patterns for NotebookLM input
+    input_ref = client.find_ref_by_role(snapshot, "textbox", "ask")
+    if input_ref:
+        return input_ref
+
+    input_ref = client.find_ref_by_role(snapshot, "textbox", "query")
+    if input_ref:
+        return input_ref
+
+    input_ref = client.find_ref_by_role(snapshot, "textbox", "source")
+    if input_ref:
+        return input_ref
+
+    # Fallback: find any textbox
+    input_ref = client.find_ref_by_role(snapshot, "textbox")
+    if input_ref:
+        return input_ref
+
+    return None
+
+
+def wait_for_answer(client: AgentBrowserClient, timeout: int = 120) -> str:
+    """Wait for NotebookLM answer to stabilize"""
+    deadline = time.time() + timeout
+    last_snapshot = None
+    stable_count = 0
+
+    while time.time() < deadline:
+        snapshot = client.snapshot()
+
+        # Check if still thinking
+        if "thinking" in snapshot.lower() or "loading" in snapshot.lower():
+            time.sleep(1)
+            continue
+
+        # Check for stability
+        if snapshot == last_snapshot:
+            stable_count += 1
+            if stable_count >= 3:
+                return extract_answer(snapshot)
+        else:
+            stable_count = 0
+            last_snapshot = snapshot
+
+        time.sleep(1)
+
+    raise AgentBrowserError(
+        code="TIMEOUT",
+        message=f"No response within {timeout} seconds",
+        recovery="Try again or check if notebook is accessible"
+    )
+
+
+def extract_answer(snapshot: str) -> str:
+    """Extract the latest answer from accessibility snapshot"""
+    # Look for response content in snapshot
+    # NotebookLM typically has responses in specific regions
+    lines = snapshot.split('\n')
+
+    # Find the last substantial text block (likely the answer)
+    answer_lines = []
+    in_response = False
+
+    for line in lines:
+        # Look for response indicators
+        if 'response' in line.lower() or 'answer' in line.lower() or 'message' in line.lower():
+            in_response = True
+
+        if in_response and line.strip():
+            # Extract text content (remove ref markers)
+            clean_line = re.sub(r'\[ref=\w+\]', '', line).strip()
+            if clean_line and len(clean_line) > 10:
+                answer_lines.append(clean_line)
+
+    if answer_lines:
+        return '\n'.join(answer_lines)
+
+    # Fallback: return relevant portion of snapshot
+    return snapshot
+
+
+def ask_notebooklm(question: str, notebook_url: str) -> dict:
     """
     Ask a question to NotebookLM
 
-    Args:
-        question: Question to ask
-        notebook_url: NotebookLM notebook URL
-        headless: Run browser in headless mode
-
     Returns:
-        Answer text from NotebookLM
+        dict with status, answer, and optional error
     """
     auth = AuthManager()
 
     if not auth.is_authenticated():
-        print("⚠️ Not authenticated. Run: python auth_manager.py setup")
-        return None
+        return {
+            "status": "error",
+            "error": {
+                "code": "AUTH_REQUIRED",
+                "message": "Not authenticated with Google",
+                "recovery": "Run: python scripts/run.py auth_manager.py setup"
+            }
+        }
 
-    print(f"💬 Asking: {question}")
-    print(f"📚 Notebook: {notebook_url}")
+    print(f"💬 Asking: {question[:80]}{'...' if len(question) > 80 else ''}")
+    print(f"📚 Notebook: {notebook_url[:60]}...")
 
-    playwright = None
-    context = None
+    client = AgentBrowserClient(session_id="notebooklm")
 
     try:
-        # Start playwright
-        playwright = sync_playwright().start()
-
-        # Launch persistent browser context using factory
-        context = BrowserFactory.launch_persistent_context(
-            playwright,
-            headless=headless
-        )
+        client.connect()
 
         # Navigate to notebook
-        page = context.new_page()
-        print("  🌐 Opening notebook...")
-        page.goto(notebook_url, wait_until="domcontentloaded")
+        client.navigate(notebook_url)
+        time.sleep(2)  # Allow page to load
 
-        # Wait for NotebookLM
-        page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=10000)
+        # Get initial snapshot
+        snapshot = client.snapshot()
 
-        # Wait for query input (MCP approach)
-        print("  ⏳ Waiting for query input...")
-        query_element = None
+        # Check if auth is needed
+        if client.check_auth(snapshot):
+            return {
+                "status": "error",
+                "error": {
+                    "code": "AUTH_REQUIRED",
+                    "message": "Google login required",
+                    "recovery": "Run: python scripts/run.py auth_manager.py setup"
+                },
+                "snapshot": snapshot[:500]
+            }
 
-        for selector in QUERY_INPUT_SELECTORS:
-            try:
-                query_element = page.wait_for_selector(
-                    selector,
-                    timeout=10000,
-                    state="visible"  # Only check visibility, not disabled!
-                )
-                if query_element:
-                    print(f"  ✓ Found input: {selector}")
-                    break
-            except:
-                continue
+        # Find input element
+        print("⏳ Finding query input...")
+        input_ref = find_input_ref(client, snapshot)
 
-        if not query_element:
-            print("  ❌ Could not find query input")
-            return None
+        if not input_ref:
+            return {
+                "status": "error",
+                "error": {
+                    "code": "ELEMENT_NOT_FOUND",
+                    "message": "Cannot find query input on page",
+                    "recovery": "Check notebook URL or view snapshot for diagnosis"
+                },
+                "snapshot": snapshot[:500]
+            }
 
-        # Type question (human-like, fast)
-        print("  ⏳ Typing question...")
-        
-        # Use primary selector for typing
-        input_selector = QUERY_INPUT_SELECTORS[0]
-        StealthUtils.human_type(page, input_selector, question)
+        # Type question and submit
+        print("⌨️ Typing question...")
+        client.fill(ref=input_ref, text=question)
+        client.press_key("Enter")
 
-        # Submit
-        print("  📤 Submitting...")
-        page.keyboard.press("Enter")
+        # Wait for answer
+        print("⏳ Waiting for answer...")
+        time.sleep(2)  # Initial wait
 
-        # Small pause
-        StealthUtils.random_delay(500, 1500)
+        answer = wait_for_answer(client, timeout=120)
 
-        # Wait for response (MCP approach: poll for stable text)
-        print("  ⏳ Waiting for answer...")
+        print("✅ Got answer!")
 
-        answer = None
-        stable_count = 0
-        last_text = None
-        deadline = time.time() + 120  # 2 minutes timeout
+        return {
+            "status": "success",
+            "question": question,
+            "answer": answer + FOLLOW_UP_REMINDER,
+            "notebook_url": notebook_url
+        }
 
-        while time.time() < deadline:
-            # Check if NotebookLM is still thinking (most reliable indicator)
-            try:
-                thinking_element = page.query_selector('div.thinking-message')
-                if thinking_element and thinking_element.is_visible():
-                    time.sleep(1)
-                    continue
-            except:
-                pass
-
-            # Try to find response with MCP selectors
-            for selector in RESPONSE_SELECTORS:
-                try:
-                    elements = page.query_selector_all(selector)
-                    if elements:
-                        # Get last (newest) response
-                        latest = elements[-1]
-                        text = latest.inner_text().strip()
-
-                        if text:
-                            if text == last_text:
-                                stable_count += 1
-                                if stable_count >= 3:  # Stable for 3 polls
-                                    answer = text
-                                    break
-                            else:
-                                stable_count = 0
-                                last_text = text
-                except:
-                    continue
-
-            if answer:
-                break
-
-            time.sleep(1)
-
-        if not answer:
-            print("  ❌ Timeout waiting for answer")
-            return None
-
-        print("  ✅ Got answer!")
-        # Add follow-up reminder to encourage Claude to ask more questions
-        return answer + FOLLOW_UP_REMINDER
-
-    except Exception as e:
-        print(f"  ❌ Error: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
-
+    except AgentBrowserError as e:
+        return {
+            "status": "error",
+            "error": e.to_dict()
+        }
     finally:
-        # Always clean up
-        if context:
-            try:
-                context.close()
-            except:
-                pass
-
-        if playwright:
-            try:
-                playwright.stop()
-            except:
-                pass
+        client.disconnect()
 
 
 def main():
@@ -193,7 +206,7 @@ def main():
     parser.add_argument('--question', required=True, help='Question to ask')
     parser.add_argument('--notebook-url', help='NotebookLM notebook URL')
     parser.add_argument('--notebook-id', help='Notebook ID from library')
-    parser.add_argument('--show-browser', action='store_true', help='Show browser')
+    parser.add_argument('--show-browser', action='store_true', help='Show browser (not yet supported)')
 
     args = parser.parse_args()
 
@@ -210,14 +223,12 @@ def main():
             return 1
 
     if not notebook_url:
-        # Check for active notebook first
         library = NotebookLibrary()
         active = library.get_active_notebook()
         if active:
             notebook_url = active['url']
             print(f"📚 Using active notebook: {active['name']}")
         else:
-            # Show available notebooks
             notebooks = library.list_notebooks()
             if notebooks:
                 print("\n📚 Available notebooks:")
@@ -232,23 +243,28 @@ def main():
             return 1
 
     # Ask the question
-    answer = ask_notebooklm(
+    result = ask_notebooklm(
         question=args.question,
-        notebook_url=notebook_url,
-        headless=not args.show_browser
+        notebook_url=notebook_url
     )
 
-    if answer:
-        print("\n" + "=" * 60)
+    if result["status"] == "success":
+        print()
+        print("=" * 60)
         print(f"Question: {args.question}")
         print("=" * 60)
         print()
-        print(answer)
+        print(result["answer"])
         print()
         print("=" * 60)
         return 0
     else:
-        print("\n❌ Failed to get answer")
+        error = result["error"]
+        print()
+        print(f"❌ [{error['code']}]: {error['message']}")
+        print(f"🔧 Recovery: {error['recovery']}")
+        if result.get("snapshot"):
+            print(f"📄 Page state:\n{result['snapshot']}")
         return 1
 
 
