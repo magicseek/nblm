@@ -167,6 +167,134 @@ class AgentBrowserClient:
                     recovery="Operation took too long, try again"
                 )
 
+    # === Browser Actions ===
+
+    def navigate(self, url: str) -> Dict[str, Any]:
+        """Navigate to URL"""
+        print(f"🌐 Navigating to {url[:50]}...")
+        response = self._send_command("navigate", {"url": url})
+
+        if response.get("error"):
+            raise AgentBrowserError(
+                code="NAVIGATION_FAILED",
+                message=response["error"],
+                recovery="Check URL is valid and accessible"
+            )
+
+        return response
+
+    def snapshot(self, prune: bool = True) -> str:
+        """Get accessibility tree snapshot of current page"""
+        response = self._send_command("snapshot", {"prune": prune})
+
+        if response.get("error"):
+            raise AgentBrowserError(
+                code="SNAPSHOT_FAILED",
+                message=response["error"],
+                recovery="Page may not be loaded yet"
+            )
+
+        return response.get("snapshot", "")
+
+    def click(self, ref: str) -> Dict[str, Any]:
+        """Click element by ref"""
+        print(f"🖱️ Clicking ref={ref}")
+        response = self._send_command("click", {"ref": ref})
+
+        if response.get("error"):
+            raise AgentBrowserError(
+                code="CLICK_FAILED",
+                message=response["error"],
+                recovery="Element may not be clickable or ref is stale"
+            )
+
+        return response
+
+    def fill(self, ref: str, text: str) -> Dict[str, Any]:
+        """Fill input field by ref (clears first)"""
+        print(f"⌨️ Filling ref={ref}")
+        response = self._send_command("fill", {"ref": ref, "text": text})
+
+        if response.get("error"):
+            raise AgentBrowserError(
+                code="FILL_FAILED",
+                message=response["error"],
+                recovery="Element may not be editable or ref is stale"
+            )
+
+        return response
+
+    def type_text(self, ref: str, text: str, submit: bool = False) -> Dict[str, Any]:
+        """Type text into element (appends to existing)"""
+        print(f"⌨️ Typing into ref={ref}")
+        response = self._send_command("type", {"ref": ref, "text": text, "submit": submit})
+
+        if response.get("error"):
+            raise AgentBrowserError(
+                code="TYPE_FAILED",
+                message=response["error"],
+                recovery="Element may not be editable or ref is stale"
+            )
+
+        return response
+
+    def press_key(self, key: str) -> Dict[str, Any]:
+        """Press keyboard key"""
+        response = self._send_command("press", {"key": key})
+        return response
+
+    def wait_for(self, text: str = None, timeout: int = 30) -> Dict[str, Any]:
+        """Wait for text to appear on page"""
+        print(f"⏳ Waiting for '{text[:30] if text else 'condition'}'...")
+        response = self._send_command("waitFor", {"text": text, "timeout": timeout * 1000})
+
+        if response.get("error"):
+            raise AgentBrowserError(
+                code="WAIT_TIMEOUT",
+                message=f"Text not found within {timeout}s",
+                recovery="Content may still be loading or text doesn't exist"
+            )
+
+        return response
+
+    # === Utility Methods ===
+
+    def check_auth(self, snapshot: str = None) -> bool:
+        """Check if current page indicates authentication is needed"""
+        if snapshot is None:
+            snapshot = self.snapshot()
+
+        auth_indicators = [
+            "accounts.google.com",
+            "Sign in",
+            "sign in",
+            "Log in",
+            "login"
+        ]
+
+        return any(indicator in snapshot for indicator in auth_indicators)
+
+    def find_ref_by_role(self, snapshot: str, role: str, hint: str = None) -> Optional[str]:
+        """Parse snapshot to find element ref by role and optional text hint"""
+        for line in snapshot.split('\n'):
+            line_lower = line.lower()
+            if role.lower() in line_lower:
+                if hint is None or hint.lower() in line_lower:
+                    match = re.search(r'\\[ref=(\\w+)\\]', line)
+                    if match:
+                        return match.group(1)
+        return None
+
+    def find_refs_by_role(self, snapshot: str, role: str) -> list:
+        """Find all refs matching a role"""
+        refs = []
+        for line in snapshot.split('\n'):
+            if role.lower() in line.lower():
+                match = re.search(r'\\[ref=(\\w+)\\]', line)
+                if match:
+                    refs.append(match.group(1))
+        return refs
+
 
 if __name__ == "__main__":
     print("Agent Browser Client - Use with ask_question.py")
