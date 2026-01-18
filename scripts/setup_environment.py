@@ -67,22 +67,22 @@ class SkillEnvironment:
                 )
                 print("✅ Dependencies installed")
 
-                # Install Chrome for Patchright (not Chromium!)
-                # Using real Chrome ensures cross-platform reliability and consistent browser fingerprinting
-                # See: https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-python#anti-detection
-                print("🌐 Installing Google Chrome for Patchright...")
-                try:
-                    subprocess.run(
-                        [str(self.venv_python), "-m", "patchright", "install", "chrome"],
-                        check=True,
-                        capture_output=True,
-                        text=True
-                    )
-                    print("✅ Chrome installed")
-                except subprocess.CalledProcessError as e:
-                    print(f"⚠️ Warning: Failed to install Chrome: {e}")
-                    print("   You may need to run manually: python -m patchright install chrome")
-                    print("   Chrome is required (not Chromium) for reliability!")
+                # Install Node.js dependencies if present
+                package_json = self.skill_dir / "package.json"
+                if package_json.exists():
+                    print("📦 Installing Node.js dependencies...")
+                    try:
+                        subprocess.run(
+                            ["npm", "install"],
+                            check=True,
+                            capture_output=True,
+                            text=True,
+                            cwd=str(self.skill_dir)
+                        )
+                        print("✅ Node.js dependencies installed")
+                    except subprocess.CalledProcessError as e:
+                        print(f"⚠️ Warning: npm install failed: {e}")
+                        print("   Ensure Node.js and npm are installed")
 
                 return True
             except subprocess.CalledProcessError as e:

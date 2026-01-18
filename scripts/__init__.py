@@ -55,18 +55,16 @@ def ensure_venv_and_run():
                 check=True
             )
 
-            # Also install patchright's chromium
-            print("   Setting up browser automation...")
-            if os.name == 'nt':
-                python_exe = venv_dir / "Scripts" / "python.exe"
-            else:
-                python_exe = venv_dir / "bin" / "python"
-
-            subprocess.run(
-                [str(python_exe), "-m", "patchright", "install", "chromium"],
-                check=True,
-                capture_output=True
-            )
+            # Install Node.js dependencies if present
+            package_json = skill_dir / "package.json"
+            if package_json.exists():
+                print("   Installing Node.js dependencies...")
+                subprocess.run(
+                    ["npm", "install"],
+                    check=True,
+                    capture_output=True,
+                    cwd=str(skill_dir)
+                )
 
         print("✅ Environment ready! All dependencies isolated in .venv/")
 

@@ -110,7 +110,7 @@ def extract_answer(snapshot: str) -> str:
     return snapshot
 
 
-def ask_notebooklm(question: str, notebook_url: str) -> dict:
+def ask_notebooklm(question: str, notebook_url: str, show_browser: bool = False) -> dict:
     """
     Ask a question to NotebookLM
 
@@ -132,7 +132,7 @@ def ask_notebooklm(question: str, notebook_url: str) -> dict:
     print(f"💬 Asking: {question[:80]}{'...' if len(question) > 80 else ''}")
     print(f"📚 Notebook: {notebook_url[:60]}...")
 
-    client = AgentBrowserClient(session_id="notebooklm")
+    client = AgentBrowserClient(session_id="notebooklm", headed=show_browser)
 
     try:
         client.connect()
@@ -206,7 +206,7 @@ def main():
     parser.add_argument('--question', required=True, help='Question to ask')
     parser.add_argument('--notebook-url', help='NotebookLM notebook URL')
     parser.add_argument('--notebook-id', help='Notebook ID from library')
-    parser.add_argument('--show-browser', action='store_true', help='Show browser (not yet supported)')
+    parser.add_argument('--show-browser', action='store_true', help='Show browser window')
 
     args = parser.parse_args()
 
@@ -245,7 +245,8 @@ def main():
     # Ask the question
     result = ask_notebooklm(
         question=args.question,
-        notebook_url=notebook_url
+        notebook_url=notebook_url,
+        show_browser=args.show_browser
     )
 
     if result["status"] == "success":

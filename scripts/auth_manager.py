@@ -77,7 +77,7 @@ class AuthManager:
         print("   A browser window will open for you to log in.")
         print()
 
-        client = AgentBrowserClient(session_id="notebooklm")
+        client = AgentBrowserClient(session_id="notebooklm", headed=True)
 
         try:
             client.connect()
