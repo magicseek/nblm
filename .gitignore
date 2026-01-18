@@ -1,3 +1,6 @@
+# Worktrees
+.worktrees/
+
 # Virtual Environment
 .venv/
 venv/
