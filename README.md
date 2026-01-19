@@ -191,7 +191,7 @@ No copy-paste between browser and editor. Claude asks and receives answers progr
 Save NotebookLM links with tags and descriptions. Claude auto-selects the right notebook for your task.
 
 ### **Automatic Authentication**
-One-time Google login, then authentication persists across sessions.
+One-time Google login with cached cookies/local storage to reuse after daemon restarts.
 
 ### **Self-Contained**
 Everything runs in the skill folder with an isolated Python environment. No global installations.
@@ -266,7 +266,7 @@ All data is stored locally within the skill directory:
 ~/.claude/skills/notebooklm/data/
 ├── library.json       - Your notebook library with metadata
 ├── auth_info.json     - Authentication status info
-└── agent_browser/     - Session metadata (session_id)
+└── agent_browser/     - Session metadata (session_id, storage_state, watchdog state)
 ```
 
 **Important Security Note:**
@@ -276,17 +276,16 @@ All data is stored locally within the skill directory:
 
 ### Session Model
 
-Unlike the MCP server, this skill uses a **stateless model**:
-- Each question opens a fresh browser
-- Asks the question, gets the answer
-- Adds a follow-up prompt to encourage Claude to ask more questions
-- Closes the browser immediately
+Unlike the MCP server, this skill uses a **daemon model**:
+- A background agent-browser daemon keeps browser state in memory while it runs
+- The daemon stops after 10 minutes of inactivity
+- Cached cookies/local storage help preserve auth between daemon restarts
 
 This means:
-- No persistent chat context
+- No persistent chat context inside NotebookLM
 - Each question is independent
-- But your notebook library persists
-- **Follow-up mechanism**: Each answer includes "Is that ALL you need to know?" to prompt Claude to ask comprehensive follow-ups
+- Your notebook library persists
+- **Follow-up mechanism**: Each answer includes "Is that ALL you need to know?" to prompt comprehensive follow-ups
 
 For multi-step research, Claude automatically asks follow-up questions when needed.
 

@@ -172,6 +172,11 @@ python scripts/run.py cleanup_manager.py --confirm          # Execute cleanup
 python scripts/run.py cleanup_manager.py --preserve-library # Keep notebooks
 ```
 
+### Watchdog Status (`auth_manager.py`)
+```bash
+python scripts/run.py auth_manager.py watchdog-status
+```
+
 ## Environment Management
 
 The virtual environment is automatically managed:
@@ -179,6 +184,9 @@ The virtual environment is automatically managed:
 - Dependencies install automatically
 - Node.js dependencies install automatically
 - agent-browser daemon starts on demand and keeps browser state in memory
+- daemon stops after 10 minutes of inactivity (any agent-browser command resets the timer)
+- set `AGENT_BROWSER_OWNER_PID` to auto-stop when the agent process exits
+- `scripts/run.py` sets `AGENT_BROWSER_OWNER_PID` to its parent PID by default
 - Everything isolated in skill directory
 
 Manual setup (only if automatic fails):
@@ -196,6 +204,9 @@ All data stored in `~/.claude/skills/notebooklm/data/`:
 - `library.json` - Notebook metadata
 - `auth_info.json` - Authentication status
 - `agent_browser/session_id` - Current daemon session ID
+- `agent_browser/last_activity.json` - Last activity timestamp for idle shutdown
+- `agent_browser/watchdog.pid` - Idle watchdog process ID
+- `agent_browser/storage_state.json` - Cached cookies/local storage for auth
 
 **Security:** Protected by `.gitignore`, never commit to git.
 

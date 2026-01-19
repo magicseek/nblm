@@ -7,6 +7,11 @@ This skill uses the `agent-browser` daemon to automate NotebookLM. Authenticatio
 - `auth_manager.py setup` launches a headed browser via the daemon.
 - You log in to Google manually.
 - The daemon keeps cookies/storage in memory for subsequent commands.
+- Cookies and local storage are cached to `data/agent_browser/storage_state.json` for reuse after daemon restarts.
+- The daemon stops after 10 minutes of inactivity; any agent-browser command resets the timer.
+- Set `AGENT_BROWSER_OWNER_PID` to stop the daemon when your agent process exits.
+- `scripts/run.py` sets `AGENT_BROWSER_OWNER_PID` to its parent PID by default; override it if your agent runs differently.
+- Stopping the daemon ends the active session and requires re-authentication.
 - The skill stores minimal metadata in `data/auth_info.json` and `data/agent_browser/session_id`.
 
 ## Troubleshooting Authentication
@@ -26,6 +31,16 @@ This skill uses the `agent-browser` daemon to automate NotebookLM. Authenticatio
    ```bash
    npm install
    npm run install-browsers
+   ```
+
+4. **Stop the daemon**
+   ```bash
+   python scripts/run.py auth_manager.py stop-daemon
+   ```
+
+5. **Check watchdog status**
+   ```bash
+   python scripts/run.py auth_manager.py watchdog-status
    ```
 
 ## Security Notes
