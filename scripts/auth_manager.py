@@ -6,6 +6,7 @@ Handles Google authentication using agent-browser
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -13,8 +14,71 @@ from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config import DATA_DIR, AGENT_BROWSER_SESSION_FILE
+from config import (
+    DATA_DIR,
+    AGENT_BROWSER_SESSION_FILE,
+    DEFAULT_SESSION_ID,
+    AGENT_BROWSER_ACTIVITY_FILE,
+    AGENT_BROWSER_WATCHDOG_PID_FILE,
+    AGENT_BROWSER_IDLE_TIMEOUT_SECONDS
+)
 from agent_browser_client import AgentBrowserClient, AgentBrowserError
+
+
+def _pid_is_alive(pid: int) -> bool:
+    """Check whether a PID is alive."""
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def get_watchdog_status() -> dict:
+    """Return watchdog and daemon status details."""
+    last_activity = None
+    owner_pid = None
+    if AGENT_BROWSER_ACTIVITY_FILE.exists():
+        try:
+            payload = json.loads(AGENT_BROWSER_ACTIVITY_FILE.read_text())
+            last_activity = payload.get("timestamp")
+            owner_pid = payload.get("owner_pid")
+        except Exception:
+            last_activity = None
+            owner_pid = None
+
+    idle_seconds = None
+    if last_activity is not None:
+        try:
+            idle_seconds = max(0, time.time() - float(last_activity))
+        except Exception:
+            idle_seconds = None
+
+    watchdog_pid = None
+    if AGENT_BROWSER_WATCHDOG_PID_FILE.exists():
+        try:
+            watchdog_pid = int(AGENT_BROWSER_WATCHDOG_PID_FILE.read_text().strip())
+        except Exception:
+            watchdog_pid = None
+
+    watchdog_alive = bool(watchdog_pid and _pid_is_alive(watchdog_pid))
+    owner_alive = bool(owner_pid and _pid_is_alive(int(owner_pid)))
+    daemon_running = AgentBrowserClient(session_id=DEFAULT_SESSION_ID)._daemon_is_running()
+
+    return {
+        "watchdog_pid": watchdog_pid,
+        "watchdog_alive": watchdog_alive,
+        "last_activity": last_activity,
+        "idle_seconds": idle_seconds,
+        "idle_timeout_seconds": AGENT_BROWSER_IDLE_TIMEOUT_SECONDS,
+        "owner_pid": owner_pid,
+        "owner_alive": owner_alive,
+        "daemon_running": daemon_running
+    }
 
 
 class AuthManager:
@@ -107,6 +171,7 @@ class AuthManager:
                             print("✅ Authentication successful!")
                             self._save_auth_info(authenticated=True)
                             self._save_session_id(client.session_id)
+                            client.save_storage_state()
                             return True
 
                 print()
@@ -117,6 +182,7 @@ class AuthManager:
                 print("✅ Already authenticated!")
                 self._save_auth_info(authenticated=True)
                 self._save_session_id(client.session_id)
+                client.save_storage_state()
                 return True
 
         except AgentBrowserError as e:
@@ -151,6 +217,7 @@ class AuthManager:
             else:
                 print("✅ Authentication valid")
                 self._save_auth_info(authenticated=True)
+                client.save_storage_state()
                 return True
 
         except AgentBrowserError as e:
@@ -194,10 +261,41 @@ class AuthManager:
         if session_id:
             print(f"   Session: {session_id}")
 
+    def watchdog_status(self):
+        """Show watchdog and daemon status"""
+        status = get_watchdog_status()
+        print("🧭 Watchdog Status")
+        print("=" * 40)
+        print(f"   Daemon running: {'✅' if status['daemon_running'] else '❌'}")
+        print(f"   Watchdog PID: {status['watchdog_pid'] or 'None'}")
+        print(f"   Watchdog alive: {'✅' if status['watchdog_alive'] else '❌'}")
+        print(f"   Owner PID: {status['owner_pid'] or 'None'}")
+        print(f"   Owner alive: {'✅' if status['owner_alive'] else '❌'}")
+        if status["idle_seconds"] is not None:
+            idle = int(status["idle_seconds"])
+            timeout = int(status["idle_timeout_seconds"])
+            remaining = max(0, timeout - idle)
+            print(f"   Idle seconds: {idle}")
+            print(f"   Idle timeout: {timeout}")
+            print(f"   Time remaining: {remaining}")
+        else:
+            print("   Idle seconds: Unknown")
+
+    def stop_daemon(self) -> bool:
+        """Stop the agent-browser daemon for the saved session"""
+        session_id = self._load_session_id() or DEFAULT_SESSION_ID
+        client = AgentBrowserClient(session_id=session_id)
+        stopped = client.shutdown()
+        if stopped:
+            print("✅ Daemon stopped")
+        else:
+            print("ℹ️ No daemon running")
+        return stopped
+
 
 def main():
     parser = argparse.ArgumentParser(description='Manage NotebookLM authentication')
-    parser.add_argument('command', choices=['setup', 'status', 'validate', 'reauth', 'clear'],
+    parser.add_argument('command', choices=['setup', 'status', 'validate', 'reauth', 'clear', 'stop-daemon', 'watchdog-status'],
                        help='Command to run')
 
     args = parser.parse_args()
@@ -217,6 +315,11 @@ def main():
         sys.exit(0 if success else 1)
     elif args.command == 'clear':
         auth.clear()
+    elif args.command == 'stop-daemon':
+        success = auth.stop_daemon()
+        sys.exit(0 if success else 1)
+    elif args.command == 'watchdog-status':
+        auth.watchdog_status()
 
 
 if __name__ == "__main__":

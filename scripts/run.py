@@ -69,6 +69,12 @@ def ensure_node_deps():
             print("✅ agent-browser installed")
 
 
+def ensure_owner_pid_env():
+    """Ensure agent-browser owner PID is set for watchdog cleanup"""
+    if not os.environ.get("AGENT_BROWSER_OWNER_PID"):
+        os.environ["AGENT_BROWSER_OWNER_PID"] = str(os.getppid())
+
+
 def main():
     """Main runner"""
     if len(sys.argv) < 2:
@@ -107,6 +113,7 @@ def main():
     # Ensure venv exists and get Python executable
     venv_python = ensure_venv()
     ensure_node_deps()
+    ensure_owner_pid_env()
 
     # Build command
     cmd = [str(venv_python), str(script_path)] + script_args

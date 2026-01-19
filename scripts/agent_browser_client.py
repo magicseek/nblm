@@ -10,10 +10,15 @@ import re
 import socket
 import subprocess
 import time
+import sys
+from urllib.parse import urlparse
 from pathlib import Path
 from typing import Optional, Dict, Any
 
 from config import (
+    AGENT_BROWSER_ACTIVITY_FILE,
+    AGENT_BROWSER_STATE_FILE,
+    AGENT_BROWSER_WATCHDOG_PID_FILE,
     AGENT_BROWSER_SOCKET_DIR,
     DEFAULT_SESSION_ID,
     SKILL_DIR
@@ -49,20 +54,23 @@ class AgentBrowserClient:
         self._buffer = b""
         self._command_id = 0
         self.headed = headed
+        self._started_daemon = False
 
     def connect(self) -> bool:
         """Connect to daemon, starting it if necessary"""
-        if self.headed and self._daemon_is_running():
+        daemon_running = self._daemon_is_running()
+        if self.headed and daemon_running:
             self._stop_daemon()
+            daemon_running = False
 
-        if not self._daemon_is_running():
+        if not daemon_running:
             self._start_daemon()
+            self._started_daemon = True
 
         try:
-            self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            self.socket.connect(str(self.socket_path))
-            self.socket.settimeout(120)  # 2 minute timeout for long operations
+            self.socket = self._connect_socket()
             self.launch(headless=not self.headed)
+            self.restore_storage_state()
             return True
         except ConnectionRefusedError:
             raise AgentBrowserError(
@@ -80,6 +88,39 @@ class AgentBrowserClient:
                 pass
             self.socket = None
 
+    def shutdown(self, timeout: int = 5) -> bool:
+        """Request daemon shutdown for this session"""
+        is_running = bool(self.socket) or self._daemon_is_running()
+        if not is_running:
+            return False
+
+        if self.socket:
+            try:
+                self._send_command("close")
+            except AgentBrowserError:
+                pass
+            self.disconnect()
+        else:
+            sock = None
+            try:
+                sock = self._connect_socket(timeout=timeout)
+                response = self._send_command_on_socket(sock, "close")
+                if not response.get("success", False):
+                    raise AgentBrowserError(
+                        code="CLI_ERROR",
+                        message=str(response.get("error", "Unknown error")),
+                        recovery="Retry the shutdown command"
+                    )
+            finally:
+                if sock:
+                    try:
+                        sock.close()
+                    except Exception:
+                        pass
+
+        self._await_socket_gone(timeout)
+        return True
+
     def launch(self, headless: bool = True) -> Dict[str, Any]:
         """Launch browser in daemon"""
         return self._send_command("launch", {"headless": headless})
@@ -89,12 +130,18 @@ class AgentBrowserClient:
         if not self.socket_path.exists():
             return False
         try:
-            test_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            test_socket.connect(str(self.socket_path))
+            test_socket = self._connect_socket(timeout=1)
             test_socket.close()
             return True
         except Exception:
             return False
+
+    def _connect_socket(self, timeout: int = 120) -> socket.socket:
+        """Create a configured socket connection to the daemon"""
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        sock.connect(str(self.socket_path))
+        return sock
 
     def _start_daemon(self):
         """Start the agent-browser daemon"""
@@ -135,14 +182,7 @@ class AgentBrowserClient:
 
     def _stop_daemon(self):
         """Stop the daemon for this session"""
-        try:
-            self._send_command("close")
-        except AgentBrowserError:
-            pass
-        for _ in range(10):
-            time.sleep(0.5)
-            if not self.socket_path.exists():
-                return
+        self.shutdown(timeout=5)
 
     def _send_command(self, action: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
         """Send command to daemon and receive response"""
@@ -153,6 +193,7 @@ class AgentBrowserClient:
                 recovery="Call connect() first"
             )
 
+        self._record_activity()
         self._command_id += 1
         command = {"id": str(self._command_id), "action": action}
         if params:
@@ -172,6 +213,31 @@ class AgentBrowserClient:
             )
 
         return response.get("data", {})
+
+    def _send_command_on_socket(self, sock: socket.socket, action: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Send command over a provided socket and return raw response"""
+        self._command_id += 1
+        command = {"id": str(self._command_id), "action": action}
+        if params:
+            command.update(params)
+
+        message = json.dumps(command) + "\n"
+        sock.sendall(message.encode())
+
+        buffer = b""
+        while True:
+            if b"\n" in buffer:
+                line, _ = buffer.split(b"\n", 1)
+                return json.loads(line.decode())
+
+            chunk = sock.recv(65536)
+            if not chunk:
+                raise AgentBrowserError(
+                    code="CONNECTION_CLOSED",
+                    message="Daemon closed connection",
+                    recovery="Retry the command or restart the daemon"
+                )
+            buffer += chunk
 
     def _read_response(self) -> Dict[str, Any]:
         """Read JSON response from daemon"""
@@ -198,12 +264,173 @@ class AgentBrowserClient:
                     recovery="Operation took too long, try again"
                 )
 
+    def _await_socket_gone(self, timeout: int = 5) -> bool:
+        """Wait for the daemon socket to be removed"""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if not self.socket_path.exists():
+                return True
+            time.sleep(0.1)
+        return False
+
+    def save_storage_state(self, state_path: Path = AGENT_BROWSER_STATE_FILE) -> bool:
+        """Persist cookies and local storage to disk"""
+        try:
+            cookies = self._get_cookies()
+            local_storage = self._get_local_storage()
+            origin = self._get_origin()
+            payload = {
+                "timestamp": time.time(),
+                "origin": origin,
+                "cookies": cookies,
+                "local_storage": local_storage
+            }
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(state_path, "w") as handle:
+                json.dump(payload, handle)
+            return True
+        except Exception:
+            return False
+
+    def restore_storage_state(self, state_path: Path = AGENT_BROWSER_STATE_FILE) -> bool:
+        """Restore cookies and local storage from disk"""
+        if not state_path.exists():
+            return False
+        try:
+            payload = json.loads(state_path.read_text())
+        except Exception:
+            return False
+
+        cookies = payload.get("cookies") or []
+        local_storage = payload.get("local_storage") or {}
+        origin = payload.get("origin")
+
+        if cookies:
+            self._set_cookies(cookies)
+
+        if local_storage and origin:
+            self.navigate(origin)
+            self._set_local_storage(local_storage)
+
+        return True
+
+    def _record_activity(self):
+        """Record activity and ensure the watchdog is running"""
+        try:
+            AGENT_BROWSER_ACTIVITY_FILE.parent.mkdir(parents=True, exist_ok=True)
+            payload = {"timestamp": time.time()}
+            owner_pid = os.environ.get("AGENT_BROWSER_OWNER_PID")
+            if owner_pid and owner_pid.isdigit():
+                payload["owner_pid"] = int(owner_pid)
+            with open(AGENT_BROWSER_ACTIVITY_FILE, "w") as handle:
+                json.dump(payload, handle)
+        except Exception:
+            return
+
+        try:
+            self._ensure_watchdog()
+        except Exception:
+            pass
+
+    def _ensure_watchdog(self):
+        """Start the idle watchdog if needed"""
+        existing_pid = self._read_watchdog_pid()
+        if existing_pid and self._pid_is_alive(existing_pid):
+            return
+
+        env = os.environ.copy()
+        env["AGENT_BROWSER_SESSION"] = self.session_id
+
+        watchdog_script = SKILL_DIR / "scripts" / "daemon_watchdog.py"
+        if not watchdog_script.exists():
+            return
+
+        process = subprocess.Popen(
+            [sys.executable, str(watchdog_script)],
+            cwd=str(SKILL_DIR),
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        self._write_watchdog_pid(process.pid)
+
+    def _read_watchdog_pid(self) -> Optional[int]:
+        """Read watchdog PID from disk if present"""
+        try:
+            if AGENT_BROWSER_WATCHDOG_PID_FILE.exists():
+                return int(AGENT_BROWSER_WATCHDOG_PID_FILE.read_text().strip())
+        except Exception:
+            return None
+        return None
+
+    def _write_watchdog_pid(self, pid: int):
+        """Write watchdog PID to disk"""
+        try:
+            AGENT_BROWSER_WATCHDOG_PID_FILE.parent.mkdir(parents=True, exist_ok=True)
+            AGENT_BROWSER_WATCHDOG_PID_FILE.write_text(str(pid))
+        except Exception:
+            pass
+
+    def _pid_is_alive(self, pid: int) -> bool:
+        """Check whether a PID is alive"""
+        if pid <= 0:
+            return False
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
+    def _get_cookies(self) -> list:
+        """Return all cookies from the current context"""
+        response = self._send_command("cookies_get")
+        return response.get("cookies", [])
+
+    def _set_cookies(self, cookies: list):
+        """Set cookies on the current context"""
+        if not cookies:
+            return
+        self._send_command("cookies_set", {"cookies": cookies})
+
+    def _get_local_storage(self) -> dict:
+        """Return localStorage for the current origin"""
+        response = self._send_command("storage_get", {"type": "local"})
+        return response.get("data", {}) or {}
+
+    def _set_local_storage(self, local_storage: dict):
+        """Set localStorage entries on the current origin"""
+        if not local_storage:
+            return
+        for key, value in local_storage.items():
+            self._send_command(
+                "storage_set",
+                {"type": "local", "key": key, "value": value}
+            )
+
+    def _get_origin(self) -> Optional[str]:
+        """Return origin for the current page"""
+        response = self._send_command("url")
+        url = response.get("url")
+        if not url:
+            return None
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.netloc:
+            return None
+        return f"{parsed.scheme}://{parsed.netloc}"
+
     # === Browser Actions ===
 
-    def navigate(self, url: str) -> Dict[str, Any]:
+    def navigate(self, url: str, wait_until: Optional[str] = None) -> Dict[str, Any]:
         """Navigate to URL"""
         print(f"🌐 Navigating to {url[:50]}...")
-        response = self._send_command("navigate", {"url": url})
+        params = {"url": url}
+        if wait_until:
+            params["waitUntil"] = wait_until
+        elif self._started_daemon:
+            params["waitUntil"] = "domcontentloaded"
+        response = self._send_command("navigate", params)
         return response
 
     def snapshot(self, prune: bool = True, interactive: bool = False) -> str:

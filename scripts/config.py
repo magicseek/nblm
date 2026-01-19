@@ -4,6 +4,7 @@ Centralizes constants, selectors, and paths
 """
 
 from pathlib import Path
+import os
 import tempfile
 
 # Paths
@@ -17,6 +18,15 @@ AGENT_BROWSER_PROFILE_DIR = DATA_DIR / "agent_browser" / "profile"
 AGENT_BROWSER_SESSION_FILE = DATA_DIR / "agent_browser" / "session_id"
 AGENT_BROWSER_SOCKET_DIR = Path(tempfile.gettempdir())
 DEFAULT_SESSION_ID = "notebooklm"
+AGENT_BROWSER_ACTIVITY_FILE = DATA_DIR / "agent_browser" / "last_activity.json"
+AGENT_BROWSER_WATCHDOG_PID_FILE = DATA_DIR / "agent_browser" / "watchdog.pid"
+AGENT_BROWSER_STATE_FILE = DATA_DIR / "agent_browser" / "storage_state.json"
+AGENT_BROWSER_IDLE_TIMEOUT_SECONDS = int(
+    os.environ.get("AGENT_BROWSER_IDLE_TIMEOUT_SECONDS", "600")
+)
+AGENT_BROWSER_WATCHDOG_INTERVAL_SECONDS = int(
+    os.environ.get("AGENT_BROWSER_WATCHDOG_INTERVAL_SECONDS", "30")
+)
 
 # NotebookLM Selectors
 QUERY_INPUT_SELECTORS = [

@@ -60,6 +60,8 @@ def wait_for_answer(client: AgentBrowserClient, question: str, timeout: int = 12
     deadline = time.time() + timeout
     last_snapshot = None
     stable_count = 0
+    last_answer = None
+    stable_answer_count = 0
 
     while time.time() < deadline:
         snapshot = client.snapshot()
@@ -68,6 +70,18 @@ def wait_for_answer(client: AgentBrowserClient, question: str, timeout: int = 12
         if "thinking" in snapshot.lower() or "loading" in snapshot.lower():
             time.sleep(1)
             continue
+
+        answer = extract_answer(snapshot, question)
+        if answer and answer != snapshot:
+            if answer == last_answer:
+                stable_answer_count += 1
+                if stable_answer_count >= 2:
+                    return answer
+            else:
+                last_answer = answer
+                stable_answer_count = 0
+        else:
+            stable_answer_count = 0
 
         # Check for stability
         if snapshot == last_snapshot:
@@ -223,6 +237,7 @@ def ask_notebooklm(question: str, notebook_url: str, show_browser: bool = False)
         answer = wait_for_answer(client, question, timeout=120)
 
         print("✅ Got answer!")
+        client.save_storage_state()
 
         return {
             "status": "success",
