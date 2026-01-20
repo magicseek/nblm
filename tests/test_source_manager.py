@@ -12,6 +12,26 @@ sys.path.insert(0, str(repo_root))
 from scripts import source_manager as source_module
 
 
+class DummyNotebookLMClient:
+    def __init__(self):
+        self.created_titles = []
+        self.added_files = []
+        self.next_notebook_id = "nb123"
+        self.next_source_ids = ["src123"]
+
+    def create_notebook(self, title: str):
+        self.created_titles.append(title)
+        return {"id": self.next_notebook_id, "title": title}
+
+    def add_file(self, notebook_id, file_path):
+        self.added_files.append((notebook_id, file_path))
+        return {
+            "source_ids": list(self.next_source_ids),
+            "was_chunked": False,
+            "chunks": None,
+        }
+
+
 class DummyAuth:
     def __init__(self, authenticated=True):
         self._authenticated = authenticated
@@ -106,25 +126,22 @@ class SourceManagerTests(unittest.TestCase):
             file_path = Path(tmpdir) / "book.pdf"
             file_path.write_text("data")
 
-            manager = source_module.SourceManager(auth_manager=DummyAuth(), client=DummyClient())
+            notebook_client = DummyNotebookLMClient()
+            manager = source_module.SourceManager(
+                auth_manager=DummyAuth(),
+                client=DummyClient(),
+                notebooklm_client=notebook_client,
+            )
 
-            def fake_run(cmd, capture_output=True, text=True):
-                if cmd[:2] == ["notebooklm", "create"]:
-                    return mock.Mock(returncode=0, stdout=json.dumps({"notebook": {"id": "nb123"}}), stderr="")
-                if cmd[:2] == ["notebooklm", "use"]:
-                    return mock.Mock(returncode=0, stdout="", stderr="")
-                if cmd[:3] == ["notebooklm", "source", "add"]:
-                    return mock.Mock(returncode=0, stdout=json.dumps({"source": {"id": "src123"}}), stderr="")
-                return mock.Mock(returncode=1, stdout="", stderr="unexpected command")
-
-            with mock.patch.object(source_module.subprocess, "run", side_effect=fake_run), \
-                mock.patch.object(source_module, "NotebookLibrary") as library_cls:
+            with mock.patch.object(source_module, "NotebookLibrary") as library_cls:
                 library_cls.return_value.add_notebook.return_value = {"id": "book"}
                 result = manager.add_from_file(file_path)
 
             self.assertTrue(result["success"])
             self.assertEqual(result["notebook_id"], "nb123")
             self.assertEqual(result["source_id"], "src123")
+            self.assertEqual(notebook_client.created_titles, ["book"])
+            self.assertEqual(notebook_client.added_files[0][0], "nb123")
 
 
 if __name__ == "__main__":
