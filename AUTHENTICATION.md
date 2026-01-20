@@ -1,6 +1,6 @@
 # Authentication Notes
 
-This skill uses the `agent-browser` daemon to automate NotebookLM. Authentication is handled by a visible browser session and kept in memory by the daemon while it runs. NotebookLM API credentials (token + cookie header) are persisted to `data/auth/google.json` on demand.
+This skill uses the `agent-browser` daemon to automate NotebookLM. Authentication is handled by a visible browser session and kept in memory by the daemon while it runs. NotebookLM API credentials (token + cookie header) are persisted to `data/auth/google.json` on demand, or supplied via environment variables.
 
 ## How Authentication Works
 
@@ -11,6 +11,9 @@ This skill uses the `agent-browser` daemon to automate NotebookLM. Authenticatio
 - NotebookLM API credentials are stored in `data/auth/google.json`:
   - `notebooklm_auth_token`
   - `notebooklm_cookies`
+- You can also provide credentials via environment variables:
+  - `NOTEBOOKLM_AUTH_TOKEN`
+  - `NOTEBOOKLM_COOKIES`
 - The daemon stops after 10 minutes of inactivity; any agent-browser command resets the timer.
 - Set `AGENT_BROWSER_OWNER_PID` to stop the daemon when your agent process exits.
 - `scripts/run.py` sets `AGENT_BROWSER_OWNER_PID` to its parent PID by default; override it if your agent runs differently.
@@ -33,6 +36,12 @@ This skill uses the `agent-browser` daemon to automate NotebookLM. Authenticatio
 3. **Refresh NotebookLM API credentials**
    ```bash
    python scripts/run.py auth_manager.py setup
+   ```
+
+4. **Use API credentials without the browser daemon**
+   ```bash
+   export NOTEBOOKLM_AUTH_TOKEN="..."
+   export NOTEBOOKLM_COOKIES="SID=...; HSID=..."
    ```
 
 3. **Missing browsers**

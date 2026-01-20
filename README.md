@@ -302,6 +302,13 @@ All data is stored locally within the skill directory:
 - NEVER manually commit or share the contents of the `data/` directory
   - `data/auth/google.json` stores NotebookLM token + cookies for API uploads
 
+### API Fallback
+
+If the browser daemon cannot start (for example, in sandboxed environments),
+`ask_question.py` falls back to NotebookLM API calls via `notebooklm-kit` when
+`NOTEBOOKLM_AUTH_TOKEN` and `NOTEBOOKLM_COOKIES` are available (or cached in
+`data/auth/google.json`).
+
 ### Session Model
 
 Unlike the MCP server, this skill uses a **daemon model**:
