@@ -6,7 +6,6 @@ Unified source ingestion for NotebookLM.
 import argparse
 import json
 import re
-import subprocess
 import tempfile
 from pathlib import Path
 from typing import List, Optional, Union
@@ -15,6 +14,7 @@ from agent_browser_client import AgentBrowserClient
 from auth_manager import AuthManager
 from config import DEFAULT_SESSION_ID
 from notebook_manager import NotebookLibrary
+from notebooklm_kit_client import NotebookLMKitClient
 from zlibrary.downloader import ZLibraryDownloader
 from zlibrary import epub_converter
 
@@ -26,11 +26,13 @@ class SourceManager:
         self,
         auth_manager: Optional[AuthManager] = None,
         client: Optional[AgentBrowserClient] = None,
+        notebooklm_client: Optional[NotebookLMKitClient] = None,
         downloader_cls=ZLibraryDownloader,
         converter=epub_converter,
     ):
         self.auth = auth_manager or AuthManager()
         self.client = client or AgentBrowserClient(session_id=DEFAULT_SESSION_ID)
+        self.notebooklm_client = notebooklm_client or NotebookLMKitClient(auth_provider=self.auth)
         self.downloader_cls = downloader_cls
         self.converter = converter
 
@@ -67,37 +69,14 @@ class SourceManager:
         created_notebook = False
 
         if not notebook_id:
-            result = subprocess.run(
-                ["notebooklm", "create", title, "--json"],
-                capture_output=True,
-                text=True
-            )
-            if result.returncode != 0:
-                return {"success": False, "error": result.stderr}
-
-            try:
-                data = json.loads(result.stdout)
-                notebook_id = data["notebook"]["id"]
-                created_notebook = True
-            except Exception:
-                return {"success": False, "error": "Failed to parse notebook ID"}
-
-        subprocess.run(["notebooklm", "use", notebook_id], capture_output=True, text=True)
+            result = self.notebooklm_client.create_notebook(title)
+            notebook_id = result["id"]
+            created_notebook = True
 
         source_ids = []
         for path in paths:
-            result = subprocess.run(
-                ["notebooklm", "source", "add", str(path), "--json"],
-                capture_output=True,
-                text=True
-            )
-            if result.returncode != 0:
-                continue
-            try:
-                data = json.loads(result.stdout)
-                source_ids.append(data["source"]["id"])
-            except Exception:
-                continue
+            result = self.notebooklm_client.add_file(notebook_id, Path(path))
+            source_ids.extend(result.get("source_ids", []))
 
         if created_notebook:
             try:
