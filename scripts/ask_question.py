@@ -5,17 +5,21 @@ Uses agent-browser for token-efficient browser automation
 """
 
 import argparse
+import json
+import os
 import sys
 import time
 import re
 from typing import Optional
 from pathlib import Path
+from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 from auth_manager import AuthManager
 from notebook_manager import NotebookLibrary
 from agent_browser_client import AgentBrowserClient, AgentBrowserError
+from notebooklm_kit_client import NotebookLMKitClient, NotebookLMKitError
 
 
 # Follow-up reminder for comprehensive research
@@ -225,6 +229,69 @@ def extract_answer(snapshot: str, question: str) -> str:
     return '\n'.join(answer_lines).strip() or snapshot
 
 
+def _extract_notebook_id_from_url(notebook_url: str) -> Optional[str]:
+    if not notebook_url:
+        return None
+    parsed = urlparse(notebook_url)
+    if not parsed.path:
+        return None
+    parts = [part for part in parsed.path.split("/") if part]
+    if "notebook" in parts:
+        idx = parts.index("notebook")
+        if idx + 1 < len(parts):
+            return parts[idx + 1]
+    return None
+
+
+def _has_api_credentials(auth: AuthManager) -> bool:
+    env_token = os.environ.get("NOTEBOOKLM_AUTH_TOKEN")
+    env_cookies = os.environ.get("NOTEBOOKLM_COOKIES")
+    if env_token and env_cookies:
+        return True
+    auth_file = auth._auth_file("google")
+    if not auth_file.exists():
+        return False
+    try:
+        payload = json.loads(auth_file.read_text())
+    except Exception:
+        return False
+    return bool(payload.get("notebooklm_auth_token") and payload.get("notebooklm_cookies"))
+
+
+def ask_notebooklm_api(question: str, notebook_url: str, auth: AuthManager) -> dict:
+    notebook_id = _extract_notebook_id_from_url(notebook_url)
+    if not notebook_id:
+        return {
+            "status": "error",
+            "error": {
+                "code": "NOTEBOOK_ID_MISSING",
+                "message": "Notebook ID could not be parsed from URL",
+                "recovery": "Provide --notebook-id or a valid NotebookLM URL",
+            },
+        }
+
+    client = NotebookLMKitClient(auth_provider=auth)
+    try:
+        response = client.chat(notebook_id, question)
+    except NotebookLMKitError as exc:
+        return {
+            "status": "error",
+            "error": {
+                "code": "API_ERROR",
+                "message": str(exc),
+                "recovery": "Check NOTEBOOKLM_AUTH_TOKEN and NOTEBOOKLM_COOKIES",
+            },
+        }
+
+    answer = response.get("text") or ""
+    return {
+        "status": "success",
+        "question": question,
+        "answer": answer + FOLLOW_UP_REMINDER,
+        "notebook_url": notebook_url,
+    }
+
+
 def ask_notebooklm(question: str, notebook_url: str, show_browser: bool = False) -> dict:
     """
     Ask a question to NotebookLM
@@ -234,7 +301,8 @@ def ask_notebooklm(question: str, notebook_url: str, show_browser: bool = False)
     """
     auth = AuthManager()
 
-    if not auth.is_authenticated("google"):
+    api_credentials_available = _has_api_credentials(auth)
+    if not auth.is_authenticated("google") and not api_credentials_available:
         return {
             "status": "error",
             "error": {
@@ -251,6 +319,15 @@ def ask_notebooklm(question: str, notebook_url: str, show_browser: bool = False)
 
     try:
         client.connect()
+    except AgentBrowserError as e:
+        if e.code == "DAEMON_UNAVAILABLE" and api_credentials_available:
+            return ask_notebooklm_api(question, notebook_url, auth)
+        return {
+            "status": "error",
+            "error": e.to_dict(),
+        }
+
+    try:
         auth.restore_auth("google", client=client)
 
         # Navigate to notebook
