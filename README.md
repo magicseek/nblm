@@ -165,7 +165,9 @@ This is a **Claude Code Skill** - a local folder containing instructions and scr
 ├── scripts/              # Python automation scripts
 │   ├── ask_question.py   # Query NotebookLM
 │   ├── notebook_manager.py # Library management
-│   └── auth_manager.py   # Google authentication
+│   ├── auth_manager.py   # Multi-service authentication
+│   ├── source_manager.py # Source ingestion (file/Z-Library)
+│   └── zlibrary/         # Z-Library download + conversion
 ├── .venv/                # Isolated Python environment (auto-created)
 └── data/                 # Local notebook library
 ```
@@ -193,6 +195,9 @@ Save NotebookLM links with tags and descriptions. Claude auto-selects the right 
 ### **Automatic Authentication**
 One-time Google login with cached cookies/local storage to reuse after daemon restarts.
 
+### **Z-Library Import**
+Download books from Z-Library URLs and upload directly to NotebookLM (EPUB converted to Markdown, large files auto-split).
+
 ### **Self-Contained**
 Everything runs in the skill folder with an isolated Python environment. No global installations.
 
@@ -206,11 +211,25 @@ Uses realistic typing speeds and interaction patterns to avoid detection.
 | What you say | What happens |
 |--------------|--------------|
 | *"Set up NotebookLM authentication"* | Opens a browser for Google login |
+| *"Set up Z-Library authentication"* | Opens a browser for Z-Library login |
 | *"Add [link] to my NotebookLM library"* | Saves notebook with metadata |
 | *"Show my NotebookLM notebooks"* | Lists all saved notebooks |
+| *"Add this Z-Library URL to NotebookLM"* | Downloads, converts if needed, uploads via Source Manager |
 | *"Ask my API docs about [topic]"* | Queries the relevant notebook |
 | *"Use the React notebook"* | Sets active notebook |
 | *"Clear NotebookLM data"* | Fresh start (keeps library) |
+
+---
+
+## Z-Library Integration
+
+```bash
+# Authenticate with Z-Library
+python scripts/run.py auth_manager.py setup --service zlibrary
+
+# Add a book from Z-Library
+python scripts/run.py source_manager.py add --url "https://zh.zlib.li/book/..."
+```
 
 ---
 
@@ -255,6 +274,7 @@ Note: The MCP server uses a separate TypeScript implementation.
 
 ### Dependencies
 - **python-dotenv==1.0.0**: Environment configuration
+- **ebooklib / beautifulsoup4 / lxml**: EPUB conversion
 - **agent-browser** (npm): Browser automation daemon
 - Automatically installed in `.venv` on first use
 
@@ -265,8 +285,10 @@ All data is stored locally within the skill directory:
 ```
 ~/.claude/skills/notebooklm/data/
 ├── library.json       - Your notebook library with metadata
-├── auth_info.json     - Authentication status info
-└── agent_browser/     - Session metadata (session_id, storage_state, watchdog state)
+├── auth/              - Per-service auth state
+│   ├── google.json
+│   └── zlibrary.json
+└── agent_browser/     - Session metadata (session_id, watchdog state)
 ```
 
 **Important Security Note:**

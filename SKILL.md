@@ -140,14 +140,39 @@ Every NotebookLM answer ends with: **"EXTREMELY IMPORTANT: Is that ALL you need 
 5. **REPEAT** - Continue until information is complete
 6. **SYNTHESIZE** - Combine all answers before responding to user
 
+## Z-Library Integration
+
+### Triggers
+- User provides Z-Library URL (zlib.li, z-lib.org, zh.zlib.li)
+- User says "download this book to NotebookLM"
+- User says "add this book from Z-Library"
+
+### Setup (One-Time)
+```bash
+# Authenticate with Z-Library
+python scripts/run.py auth_manager.py setup --service zlibrary
+```
+
+### Commands
+```bash
+# Add book from Z-Library
+python scripts/run.py source_manager.py add --url "https://zh.zlib.li/book/..."
+
+# Check Z-Library auth status
+python scripts/run.py auth_manager.py status --service zlibrary
+```
+
 ## Script Reference
 
 ### Authentication Management (`auth_manager.py`)
 ```bash
-python scripts/run.py auth_manager.py setup    # Initial setup (browser visible)
-python scripts/run.py auth_manager.py status   # Check authentication
-python scripts/run.py auth_manager.py reauth   # Re-authenticate (browser visible)
-python scripts/run.py auth_manager.py clear    # Clear authentication
+python scripts/run.py auth_manager.py setup                    # Default: Google
+python scripts/run.py auth_manager.py setup --service google
+python scripts/run.py auth_manager.py setup --service zlibrary
+python scripts/run.py auth_manager.py status                   # Show all services
+python scripts/run.py auth_manager.py status --service zlibrary
+python scripts/run.py auth_manager.py reauth --service google  # Re-authenticate
+python scripts/run.py auth_manager.py clear --service zlibrary # Clear auth
 ```
 
 ### Notebook Management (`notebook_manager.py`)
@@ -163,6 +188,13 @@ python scripts/run.py notebook_manager.py stats
 ### Question Interface (`ask_question.py`)
 ```bash
 python scripts/run.py ask_question.py --question "..." [--notebook-id ID] [--notebook-url URL] [--show-browser]
+```
+
+### Source Manager (`source_manager.py`)
+```bash
+python scripts/run.py source_manager.py add --url "https://zh.zlib.li/book/..."
+python scripts/run.py source_manager.py add --file "/path/to/book.pdf"
+python scripts/run.py source_manager.py add --url "..." --notebook-id NOTEBOOK_ID
 ```
 
 ### Data Cleanup (`cleanup_manager.py`)
@@ -202,11 +234,11 @@ npm run install-browsers
 
 All data stored in `~/.claude/skills/notebooklm/data/`:
 - `library.json` - Notebook metadata
-- `auth_info.json` - Authentication status
+- `auth/google.json` - Google auth state
+- `auth/zlibrary.json` - Z-Library auth state
 - `agent_browser/session_id` - Current daemon session ID
 - `agent_browser/last_activity.json` - Last activity timestamp for idle shutdown
 - `agent_browser/watchdog.pid` - Idle watchdog process ID
-- `agent_browser/storage_state.json` - Cached cookies/local storage for auth
 
 **Security:** Protected by `.gitignore`, never commit to git.
 
