@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Agent-browser helpers for cookie collection and page evaluation
 - API fallback for `ask_question.py` via notebooklm-kit when daemon is unavailable
 - Environment variable support for `NOTEBOOKLM_AUTH_TOKEN` and `NOTEBOOKLM_COOKIES`
+- HTTP-first refresh for NotebookLM auth tokens using stored cookies with a 10-day staleness policy
 
 ### Fixed
 - Z-Library direct download (`/dl/`) links wait for downloads before navigation

@@ -11,6 +11,7 @@ This skill uses the `agent-browser` daemon to automate NotebookLM. Authenticatio
 - NotebookLM API credentials are stored in `data/auth/google.json`:
   - `notebooklm_auth_token`
   - `notebooklm_cookies`
+- If cached NotebookLM credentials are older than 10 days, the skill attempts an HTTP refresh using stored Google cookies before falling back to the daemon.
 - You can also provide credentials via environment variables:
   - `NOTEBOOKLM_AUTH_TOKEN`
   - `NOTEBOOKLM_COOKIES`

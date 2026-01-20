@@ -308,6 +308,8 @@ If the browser daemon cannot start (for example, in sandboxed environments),
 `ask_question.py` falls back to NotebookLM API calls via `notebooklm-kit` when
 `NOTEBOOKLM_AUTH_TOKEN` and `NOTEBOOKLM_COOKIES` are available (or cached in
 `data/auth/google.json`).
+If cached credentials are older than 10 days, the skill attempts an HTTP refresh
+using stored Google cookies before falling back to the daemon.
 
 ### Session Model
 
