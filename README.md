@@ -270,6 +270,7 @@ python scripts/run.py source_manager.py add --url "https://zh.zlib.li/dl/..."
 
 ### Core Technology
 - **agent-browser**: Browser automation daemon (Playwright-based)
+- **notebooklm-kit**: Node SDK for NotebookLM API uploads
 - **Python**: Implementation language for this skill
 - **Stealth techniques**: Human-like typing and interaction patterns
 
@@ -279,6 +280,7 @@ Note: The MCP server uses a separate TypeScript implementation.
 - **python-dotenv==1.0.0**: Environment configuration
 - **ebooklib / beautifulsoup4 / lxml**: EPUB conversion
 - **agent-browser** (npm): Browser automation daemon
+- **notebooklm-kit** (npm): NotebookLM API client
 - Automatically installed in `.venv` on first use
 
 ### Data Storage
@@ -298,6 +300,7 @@ All data is stored locally within the skill directory:
 - The `data/` directory contains sensitive authentication data and personal notebooks
 - It's automatically excluded from git via `.gitignore`
 - NEVER manually commit or share the contents of the `data/` directory
+  - `data/auth/google.json` stores NotebookLM token + cookies for API uploads
 
 ### Session Model
 

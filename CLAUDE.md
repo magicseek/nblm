@@ -100,6 +100,7 @@ references/               # Extended documentation
 - **python-dotenv==1.0.0**: Environment configuration
 - **ebooklib / beautifulsoup4 / lxml**: EPUB conversion
 - **agent-browser** (npm): Browser automation daemon
+- **notebooklm-kit** (npm): NotebookLM API client
 - **Node.js**: Required to run the daemon
 
 ## Testing
@@ -120,5 +121,6 @@ python scripts/run.py source_manager.py add --url "https://zh.zlib.li/book/..."
 - Authentication requires a visible browser session (`--show-browser`)
 - Free tier rate limit: 50 queries/day
 - `data/` directory contains sensitive auth data - never commit
+- `data/auth/google.json` includes NotebookLM API token + cookies
 - Each question is independent (stateless model)
 - Answers include follow-up prompt to encourage comprehensive research

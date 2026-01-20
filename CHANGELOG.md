@@ -8,8 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- NotebookLM kit bridge/client scaffolding for upcoming integration
-- Agent-browser client helpers for cookie collection and page evaluation
+- NotebookLM kit bridge and client for NotebookLM uploads
+- NotebookLM auth token/cookie persistence in `data/auth/google.json`
+- Agent-browser helpers for cookie collection and page evaluation
 
 ### Fixed
 - Z-Library direct download (`/dl/`) links wait for downloads before navigation
