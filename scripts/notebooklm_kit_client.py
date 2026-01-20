@@ -69,7 +69,10 @@ class NotebookLMKitClient:
         }
 
     def _run(self, args: list[str]) -> dict:
-        credentials = self.auth_provider.get_notebooklm_credentials()
+        return self._run_with_retry(args, force_refresh=False)
+
+    def _run_with_retry(self, args: list[str], force_refresh: bool) -> dict:
+        credentials = self.auth_provider.get_notebooklm_credentials(force_refresh=force_refresh)
         env = os.environ.copy()
         env["NOTEBOOKLM_AUTH_TOKEN"] = credentials["auth_token"]
         env["NOTEBOOKLM_COOKIES"] = credentials["cookies"]
@@ -89,6 +92,8 @@ class NotebookLMKitClient:
             stderr = result.stderr.strip()
             stdout = result.stdout.strip()
             message = stderr or stdout or "NotebookLM kit bridge failed"
+            if not force_refresh and self._is_auth_error(message):
+                return self._run_with_retry(args, force_refresh=True)
             raise NotebookLMKitError(message)
 
         output = result.stdout.strip()
@@ -102,5 +107,15 @@ class NotebookLMKitClient:
         if not isinstance(payload, dict):
             raise NotebookLMKitError("NotebookLM kit bridge returned unexpected payload")
         if payload.get("success") is False:
-            raise NotebookLMKitError(payload.get("error", "NotebookLM kit bridge error"))
+            error_message = payload.get("error", "NotebookLM kit bridge error")
+            if not force_refresh and self._is_auth_error(error_message):
+                return self._run_with_retry(args, force_refresh=True)
+            raise NotebookLMKitError(error_message)
         return payload
+
+    @staticmethod
+    def _is_auth_error(message: str) -> bool:
+        if not message:
+            return False
+        message_lower = message.lower()
+        return any(token in message_lower for token in ("401", "403", "unauthorized", "not authenticated"))
