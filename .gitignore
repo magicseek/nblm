@@ -78,4 +78,5 @@ build/
 
 # Node
 node_modules/
+prpm.lock
 docs/
