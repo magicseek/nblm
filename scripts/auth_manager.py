@@ -96,7 +96,7 @@ class AuthManager:
         "zlibrary": {
             "file": ZLIBRARY_AUTH_FILE,
             "login_url": "https://zh.zlib.li/",
-            "success_indicators": ["logout", "profile", "download"]
+            "success_indicators": ["logout", "退出"]
         }
     }
 
@@ -209,6 +209,22 @@ class AuthManager:
         if service_name == "google":
             if client.check_auth(snapshot):
                 return False
+        if service_name == "zlibrary":
+            login_indicators = (
+                "login",
+                "log in",
+                "sign in",
+                "sign up",
+                "register",
+                "登录",
+                "注册",
+            )
+            if any(indicator in snapshot_lower for indicator in login_indicators):
+                return False
+            indicators = self._get_service_config(service_name)["success_indicators"]
+            if any(indicator in snapshot_lower for indicator in indicators):
+                return True
+            return True
         indicators = self._get_service_config(service_name)["success_indicators"]
         return any(indicator in snapshot_lower for indicator in indicators)
 

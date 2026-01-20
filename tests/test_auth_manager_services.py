@@ -109,6 +109,36 @@ class AuthManagerServiceTests(unittest.TestCase):
         self.assertFalse(auth._snapshot_indicates_auth("google", snapshot, FakeClient()))
         self.assertFalse(auth._snapshot_indicates_auth(None, snapshot, FakeClient()))
 
+    def test_snapshot_indicates_auth_rejects_zlibrary_login(self):
+        auth = auth_manager.AuthManager()
+
+        class FakeClient:
+            def check_auth(self, snapshot):
+                return False
+
+        snapshot = 'link "登录" [ref=e1]'
+        self.assertFalse(auth._snapshot_indicates_auth("zlibrary", snapshot, FakeClient()))
+
+    def test_snapshot_indicates_auth_accepts_zlibrary_logout(self):
+        auth = auth_manager.AuthManager()
+
+        class FakeClient:
+            def check_auth(self, snapshot):
+                return False
+
+        snapshot = 'link "退出" [ref=e1]'
+        self.assertTrue(auth._snapshot_indicates_auth("zlibrary", snapshot, FakeClient()))
+
+    def test_snapshot_indicates_auth_accepts_zlibrary_without_login_link(self):
+        auth = auth_manager.AuthManager()
+
+        class FakeClient:
+            def check_auth(self, snapshot):
+                return False
+
+        snapshot = 'link "我的图书馆" [ref=e2]'
+        self.assertTrue(auth._snapshot_indicates_auth("zlibrary", snapshot, FakeClient()))
+
 
 if __name__ == "__main__":
     unittest.main()
