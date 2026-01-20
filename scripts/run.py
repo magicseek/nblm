@@ -10,6 +10,95 @@ import subprocess
 from pathlib import Path
 
 
+AGENT_PROCESS_HINTS = ("codex", "claude", "claude-code", "claude_code")
+IGNORED_PROCESS_NAMES = {
+    "bash",
+    "dash",
+    "fish",
+    "sh",
+    "zsh",
+    "python",
+    "python3",
+    "node",
+    "npm",
+}
+
+
+def _get_process_info(pid: int):
+    """Return (ppid, command) for a PID, or None on failure."""
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "pid=,ppid=,command="],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except Exception:
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    line = result.stdout.strip()
+    if not line:
+        return None
+
+    parts = line.split(None, 2)
+    if len(parts) < 2:
+        return None
+
+    try:
+        ppid = int(parts[1])
+    except ValueError:
+        return None
+
+    command = parts[2] if len(parts) > 2 else ""
+    return ppid, command
+
+
+def _looks_like_agent(command: str) -> bool:
+    lower = command.lower()
+    return any(hint in lower for hint in AGENT_PROCESS_HINTS)
+
+
+def _is_ignored_command(command: str) -> bool:
+    if not command:
+        return True
+    base = Path(command.split()[0]).name.lower()
+    return base in IGNORED_PROCESS_NAMES
+
+
+def _detect_owner_pid():
+    """Best-effort owner PID detection for CLI agents."""
+    if os.name == "nt":
+        return os.getppid()
+
+    pid = os.getppid()
+    fallback_pid = None
+    seen = set()
+
+    for _ in range(20):
+        if pid <= 1 or pid in seen:
+            break
+        seen.add(pid)
+
+        info = _get_process_info(pid)
+        if not info:
+            break
+
+        ppid, command = info
+        if _looks_like_agent(command):
+            return pid
+        if fallback_pid is None and not _is_ignored_command(command):
+            fallback_pid = pid
+
+        if not ppid or ppid == pid:
+            break
+        pid = ppid
+
+    return fallback_pid
+
+
 def get_venv_python():
     """Get the virtual environment Python executable"""
     skill_dir = Path(__file__).parent.parent
@@ -72,7 +161,10 @@ def ensure_node_deps():
 def ensure_owner_pid_env():
     """Ensure agent-browser owner PID is set for watchdog cleanup"""
     if not os.environ.get("AGENT_BROWSER_OWNER_PID"):
-        os.environ["AGENT_BROWSER_OWNER_PID"] = str(os.getppid())
+        owner_pid = _detect_owner_pid()
+        if owner_pid is None:
+            owner_pid = os.getppid()
+        os.environ["AGENT_BROWSER_OWNER_PID"] = str(owner_pid)
 
 
 def main():

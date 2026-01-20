@@ -11,6 +11,7 @@ import socket
 import subprocess
 import time
 import sys
+import tempfile
 from urllib.parse import urlparse
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -273,18 +274,76 @@ class AgentBrowserClient:
             time.sleep(0.1)
         return False
 
-    def save_storage_state(self, state_path: Path = AGENT_BROWSER_STATE_FILE) -> bool:
-        """Persist cookies and local storage to disk"""
+    def get_storage_state(self, state_path: Optional[Path] = None) -> dict:
+        """Get complete Playwright storage state (cookies + origins)"""
+        temp_path = None
+        target_path = state_path
+        if target_path is None:
+            fd, temp_name = tempfile.mkstemp(prefix="agent-browser-state-", suffix=".json")
+            os.close(fd)
+            temp_path = Path(temp_name)
+            target_path = temp_path
+
         try:
-            cookies = self._get_cookies()
-            local_storage = self._get_local_storage()
-            origin = self._get_origin()
-            payload = {
-                "timestamp": time.time(),
-                "origin": origin,
-                "cookies": cookies,
-                "local_storage": local_storage
-            }
+            self._send_command("state_save", {"path": str(target_path)})
+            return json.loads(target_path.read_text())
+        except Exception:
+            return {}
+        finally:
+            if temp_path:
+                try:
+                    temp_path.unlink()
+                except Exception:
+                    pass
+
+    def set_storage_state(self, state: dict) -> bool:
+        """Restore storage state from saved Playwright state"""
+        if not state:
+            return False
+
+        cookies = state.get("cookies") or []
+        if cookies:
+            self._set_cookies(cookies)
+
+        for origin_data in state.get("origins", []) or []:
+            origin = origin_data.get("origin")
+            if not origin:
+                continue
+
+            local_storage = origin_data.get("localStorage") or []
+            session_storage = origin_data.get("sessionStorage") or []
+
+            if not local_storage and not session_storage:
+                continue
+
+            self.navigate(origin)
+            for item in local_storage:
+                key = item.get("name")
+                value = item.get("value")
+                if key is None or value is None:
+                    continue
+                self._send_command(
+                    "storage_set",
+                    {"type": "local", "key": key, "value": value}
+                )
+            for item in session_storage:
+                key = item.get("name")
+                value = item.get("value")
+                if key is None or value is None:
+                    continue
+                self._send_command(
+                    "storage_set",
+                    {"type": "session", "key": key, "value": value}
+                )
+
+        return True
+
+    def save_storage_state(self, state_path: Path = AGENT_BROWSER_STATE_FILE) -> bool:
+        """Persist Playwright storage state to disk"""
+        try:
+            payload = self.get_storage_state()
+            if not payload:
+                return False
             state_path.parent.mkdir(parents=True, exist_ok=True)
             with open(state_path, "w") as handle:
                 json.dump(payload, handle)
@@ -293,35 +352,30 @@ class AgentBrowserClient:
             return False
 
     def restore_storage_state(self, state_path: Path = AGENT_BROWSER_STATE_FILE) -> bool:
-        """Restore cookies and local storage from disk"""
+        """Restore Playwright storage state from disk"""
         if not state_path.exists():
             return False
         try:
             payload = json.loads(state_path.read_text())
         except Exception:
             return False
-
-        cookies = payload.get("cookies") or []
-        local_storage = payload.get("local_storage") or {}
-        origin = payload.get("origin")
-
-        if cookies:
-            self._set_cookies(cookies)
-
-        if local_storage and origin:
-            self.navigate(origin)
-            self._set_local_storage(local_storage)
-
-        return True
+        return self.set_storage_state(payload)
 
     def _record_activity(self):
         """Record activity and ensure the watchdog is running"""
         try:
             AGENT_BROWSER_ACTIVITY_FILE.parent.mkdir(parents=True, exist_ok=True)
             payload = {"timestamp": time.time()}
-            owner_pid = os.environ.get("AGENT_BROWSER_OWNER_PID")
-            if owner_pid and owner_pid.isdigit():
-                payload["owner_pid"] = int(owner_pid)
+            owner_pid = None
+            env_owner_pid = os.environ.get("AGENT_BROWSER_OWNER_PID")
+            if env_owner_pid and env_owner_pid.isdigit():
+                owner_pid = int(env_owner_pid)
+            else:
+                existing_owner_pid = self._read_existing_owner_pid()
+                if existing_owner_pid is not None and self._pid_is_alive(existing_owner_pid):
+                    owner_pid = existing_owner_pid
+            if owner_pid is not None:
+                payload["owner_pid"] = owner_pid
             with open(AGENT_BROWSER_ACTIVITY_FILE, "w") as handle:
                 json.dump(payload, handle)
         except Exception:
@@ -331,6 +385,22 @@ class AgentBrowserClient:
             self._ensure_watchdog()
         except Exception:
             pass
+
+    def _read_existing_owner_pid(self) -> Optional[int]:
+        """Read the previously recorded owner PID if available."""
+        try:
+            if not AGENT_BROWSER_ACTIVITY_FILE.exists():
+                return None
+            payload = json.loads(AGENT_BROWSER_ACTIVITY_FILE.read_text())
+        except Exception:
+            return None
+
+        owner_pid = payload.get("owner_pid")
+        if isinstance(owner_pid, int):
+            return owner_pid
+        if isinstance(owner_pid, str) and owner_pid.isdigit():
+            return int(owner_pid)
+        return None
 
     def _ensure_watchdog(self):
         """Start the idle watchdog if needed"""
@@ -479,15 +549,35 @@ class AgentBrowserClient:
         if snapshot is None:
             snapshot = self.snapshot()
 
-        auth_indicators = [
-            "accounts.google.com",
-            "Sign in",
+        auth_field_indicators = (
+            "email or phone",
+            "password",
+            "username",
+        )
+        auth_action_indicators = (
             "sign in",
-            "Log in",
-            "login"
-        ]
+            "log in",
+            "login",
+        )
 
-        return any(indicator in snapshot for indicator in auth_indicators)
+        for line in snapshot.splitlines():
+            line_lower = line.strip().lower()
+            if not line_lower:
+                continue
+
+            if "textbox" in line_lower:
+                if any(indicator in line_lower for indicator in auth_field_indicators):
+                    return True
+
+            is_action_line = (
+                line_lower.startswith("heading")
+                or "button" in line_lower
+                or "link" in line_lower
+            )
+            if is_action_line and any(indicator in line_lower for indicator in auth_action_indicators):
+                return True
+
+        return False
 
     def find_ref_by_role(self, snapshot: str, role: str, hint: str = None) -> Optional[str]:
         """Parse snapshot to find element ref by role and optional text hint"""

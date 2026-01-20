@@ -74,6 +74,18 @@ class CleanupManager:
                     total_size += size
 
             # Auth info
+            auth_dir = self.data_dir / "auth"
+            if auth_dir.exists():
+                for item in auth_dir.iterdir():
+                    size = self._get_size(item)
+                    paths['auth'].append({
+                        'path': str(item),
+                        'size': size,
+                        'type': 'dir' if item.is_dir() else 'file'
+                    })
+                    total_size += size
+
+            # Legacy auth info file (pre multi-service)
             auth_info = self.data_dir / "auth_info.json"
             if auth_info.exists():
                 size = auth_info.stat().st_size
@@ -86,7 +98,7 @@ class CleanupManager:
 
             # Other files in data dir (but NEVER .venv!)
             for item in self.data_dir.iterdir():
-                if item.name not in ['agent_browser', 'library.json', 'auth_info.json']:
+                if item.name not in ['agent_browser', 'library.json', 'auth', 'auth_info.json']:
                     size = self._get_size(item)
                     paths['other'].append({
                         'path': str(item),

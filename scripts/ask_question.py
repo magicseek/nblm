@@ -27,6 +27,20 @@ FOLLOW_UP_REMINDER = (
     "(each question opens a fresh context)."
 )
 
+PENDING_PHRASES = (
+    "thinking",
+    "loading",
+    "getting the gist",
+    "gathering the facts",
+    "consulting your sources",
+    "scanning the text",
+    "reading your inputs",
+)
+PENDING_LINE_RE = re.compile(
+    r"^(?:thinking|loading|getting the gist|gathering the facts|consulting your sources|scanning the text|reading your inputs)(?:[\s.!?]*)$|^[A-Za-z][A-Za-z\s'’]{0,60}\.{3,}$",
+    re.IGNORECASE
+)
+
 
 def find_input_ref(client: AgentBrowserClient, snapshot: str) -> str:
     """Find the query input element ref"""
@@ -65,20 +79,32 @@ def wait_for_answer(client: AgentBrowserClient, question: str, timeout: int = 12
 
     while time.time() < deadline:
         snapshot = client.snapshot()
+        snapshot_lower = snapshot.lower()
+        answer = extract_answer(snapshot, question)
+        filtered_answer = ""
+        if answer and answer != snapshot:
+            filtered_answer = _strip_pending_lines(answer)
+        question_only = _is_question_only_answer(filtered_answer, question)
+        has_answer = bool(filtered_answer) and not question_only
 
         # Check if still thinking
-        if "thinking" in snapshot.lower() or "loading" in snapshot.lower():
+        pending_in_snapshot = False
+        if answer and answer != snapshot:
+            if question_only or (not has_answer and _answer_has_pending_line(answer)):
+                pending_in_snapshot = True
+        if not pending_in_snapshot:
+            pending_in_snapshot = any(marker in snapshot_lower for marker in PENDING_PHRASES)
+        if pending_in_snapshot and not has_answer:
             time.sleep(1)
             continue
 
-        answer = extract_answer(snapshot, question)
-        if answer and answer != snapshot:
-            if answer == last_answer:
+        if has_answer:
+            if filtered_answer == last_answer:
                 stable_answer_count += 1
                 if stable_answer_count >= 2:
-                    return answer
+                    return filtered_answer
             else:
-                last_answer = answer
+                last_answer = filtered_answer
                 stable_answer_count = 0
         else:
             stable_answer_count = 0
@@ -87,7 +113,9 @@ def wait_for_answer(client: AgentBrowserClient, question: str, timeout: int = 12
         if snapshot == last_snapshot:
             stable_count += 1
             if stable_count >= 3:
-                return extract_answer(snapshot, question)
+                final_answer = extract_answer(snapshot, question)
+                filtered_final = _strip_pending_lines(final_answer) if final_answer != snapshot else ""
+                return filtered_final or final_answer
         else:
             stable_count = 0
             last_snapshot = snapshot
@@ -99,6 +127,39 @@ def wait_for_answer(client: AgentBrowserClient, question: str, timeout: int = 12
         message=f"No response within {timeout} seconds",
         recovery="Try again or check if notebook is accessible"
     )
+
+
+def _strip_pending_lines(answer: str) -> str:
+    """Remove placeholder status lines from a candidate answer."""
+    if not answer:
+        return ""
+    lines = [line.strip() for line in answer.splitlines() if line.strip()]
+    filtered = [line for line in lines if not PENDING_LINE_RE.match(line)]
+    return "\n".join(filtered).strip()
+
+
+def _answer_has_pending_line(answer: str) -> bool:
+    """Return True if the answer contains a pending status line."""
+    if not answer:
+        return False
+    for line in answer.splitlines():
+        stripped = line.strip()
+        if stripped and PENDING_LINE_RE.match(stripped):
+            return True
+    return False
+
+
+def _is_question_only_answer(answer: str, question: str) -> bool:
+    """Return True if the answer only echoes the question."""
+    if not answer:
+        return False
+    question_norm = question.strip().lower()
+    if not question_norm:
+        return False
+    lines = [line.strip() for line in answer.splitlines() if line.strip()]
+    if not lines:
+        return False
+    return all(line.lower() == question_norm for line in lines)
 
 
 def extract_answer(snapshot: str, question: str) -> str:
@@ -173,7 +234,7 @@ def ask_notebooklm(question: str, notebook_url: str, show_browser: bool = False)
     """
     auth = AuthManager()
 
-    if not auth.is_authenticated():
+    if not auth.is_authenticated("google"):
         return {
             "status": "error",
             "error": {
@@ -190,6 +251,7 @@ def ask_notebooklm(question: str, notebook_url: str, show_browser: bool = False)
 
     try:
         client.connect()
+        auth.restore_auth("google", client=client)
 
         # Navigate to notebook
         client.navigate(notebook_url)
@@ -237,7 +299,7 @@ def ask_notebooklm(question: str, notebook_url: str, show_browser: bool = False)
         answer = wait_for_answer(client, question, timeout=120)
 
         print("✅ Got answer!")
-        client.save_storage_state()
+        auth.save_auth("google", client=client)
 
         return {
             "status": "success",

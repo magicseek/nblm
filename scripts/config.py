@@ -11,6 +11,9 @@ import tempfile
 SKILL_DIR = Path(__file__).parent.parent
 DATA_DIR = SKILL_DIR / "data"
 AUTH_INFO_FILE = DATA_DIR / "auth_info.json"
+AUTH_DIR = DATA_DIR / "auth"
+GOOGLE_AUTH_FILE = AUTH_DIR / "google.json"
+ZLIBRARY_AUTH_FILE = AUTH_DIR / "zlibrary.json"
 LIBRARY_FILE = DATA_DIR / "library.json"
 
 # Agent-browser configuration

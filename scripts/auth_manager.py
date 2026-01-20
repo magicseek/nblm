@@ -16,6 +16,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config import (
     DATA_DIR,
+    AUTH_DIR,
+    GOOGLE_AUTH_FILE,
+    ZLIBRARY_AUTH_FILE,
     AGENT_BROWSER_SESSION_FILE,
     DEFAULT_SESSION_ID,
     AGENT_BROWSER_ACTIVITY_FILE,
@@ -82,45 +85,108 @@ def get_watchdog_status() -> dict:
 
 
 class AuthManager:
-    """Manage Google authentication for NotebookLM"""
+    """Unified auth manager for multiple services"""
 
-    AUTH_INFO_FILE = DATA_DIR / "auth_info.json"
+    SERVICES = {
+        "google": {
+            "file": GOOGLE_AUTH_FILE,
+            "login_url": "https://notebooklm.google.com",
+            "success_indicators": ["notebooklm", "notebook"]
+        },
+        "zlibrary": {
+            "file": ZLIBRARY_AUTH_FILE,
+            "login_url": "https://zh.zlib.li/",
+            "success_indicators": ["logout", "profile", "download"]
+        }
+    }
 
     def __init__(self):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
+        AUTH_DIR.mkdir(parents=True, exist_ok=True)
 
-    def is_authenticated(self) -> bool:
-        """Check if user is authenticated"""
-        if not self.AUTH_INFO_FILE.exists():
-            return False
+    def _get_service_config(self, service: str) -> dict:
+        service = service or "google"
+        if service not in self.SERVICES:
+            raise ValueError(f"Unknown service: {service}")
+        return self.SERVICES[service]
 
+    def _auth_file(self, service: str) -> Path:
+        return self._get_service_config(service)["file"]
+
+    def _auth_timestamp(self, auth_file: Path) -> str:
         try:
-            with open(self.AUTH_INFO_FILE) as f:
-                info = json.load(f)
-                return info.get("authenticated", False)
+            return datetime.fromtimestamp(auth_file.stat().st_mtime).isoformat()
         except Exception:
-            return False
+            return "Unknown"
 
-    def get_auth_info(self) -> dict:
-        """Get authentication info"""
-        if not self.AUTH_INFO_FILE.exists():
+    def is_authenticated(self, service: str = "google") -> bool:
+        """Check if service has valid saved auth"""
+        info = self.get_auth_info(service)
+        return bool(info.get("authenticated"))
+
+    def get_auth_info(self, service: str = "google") -> dict:
+        """Get authentication info for a service"""
+        auth_file = self._auth_file(service)
+        if not auth_file.exists():
             return {"authenticated": False}
 
         try:
-            with open(self.AUTH_INFO_FILE) as f:
-                return json.load(f)
+            payload = json.loads(auth_file.read_text())
         except Exception:
             return {"authenticated": False}
 
-    def _save_auth_info(self, authenticated: bool, email: str = None):
-        """Save authentication info"""
-        info = {
+        authenticated = bool(payload.get("cookies") or payload.get("origins"))
+        timestamp = self._auth_timestamp(auth_file)
+        return {
             "authenticated": authenticated,
-            "timestamp": datetime.now().isoformat(),
-            "email": email
+            "timestamp": timestamp
         }
-        with open(self.AUTH_INFO_FILE, 'w') as f:
-            json.dump(info, f, indent=2)
+
+    def save_auth(self, service: str = "google", client: AgentBrowserClient = None) -> bool:
+        """Save current browser state for service"""
+        owns_client = False
+        if client is None:
+            client = AgentBrowserClient(session_id=self._load_session_id() or DEFAULT_SESSION_ID)
+            client.connect()
+            owns_client = True
+
+        try:
+            payload = client.get_storage_state()
+            if not payload:
+                return False
+            auth_file = self._auth_file(service)
+            auth_file.parent.mkdir(parents=True, exist_ok=True)
+            auth_file.write_text(json.dumps(payload))
+            self._save_session_id(client.session_id)
+            return True
+        except Exception:
+            return False
+        finally:
+            if owns_client:
+                client.disconnect()
+
+    def restore_auth(self, service: str = "google", client: AgentBrowserClient = None) -> bool:
+        """Restore saved auth state to browser"""
+        auth_file = self._auth_file(service)
+        if not auth_file.exists():
+            return False
+
+        try:
+            payload = json.loads(auth_file.read_text())
+        except Exception:
+            return False
+
+        owns_client = False
+        if client is None:
+            client = AgentBrowserClient(session_id=self._load_session_id() or DEFAULT_SESSION_ID)
+            client.connect()
+            owns_client = True
+
+        try:
+            return client.set_storage_state(payload)
+        finally:
+            if owns_client:
+                client.disconnect()
 
     def _save_session_id(self, session_id: str):
         """Save session ID for future use"""
@@ -135,55 +201,58 @@ class AuthManager:
                 return f.read().strip()
         return None
 
-    def setup(self):
-        """Interactive Google authentication setup"""
-        print("🔐 Setting up Google authentication...")
+    def _snapshot_indicates_auth(self, service: str, snapshot: str, client: AgentBrowserClient) -> bool:
+        if not snapshot:
+            return False
+        service_name = service or "google"
+        snapshot_lower = snapshot.lower()
+        if service_name == "google":
+            if client.check_auth(snapshot):
+                return False
+        indicators = self._get_service_config(service_name)["success_indicators"]
+        return any(indicator in snapshot_lower for indicator in indicators)
+
+    def setup(self, service: str = "google"):
+        """Interactive authentication setup for specified service"""
+        service_config = self._get_service_config(service)
+        print(f"🔐 Setting up {service} authentication...")
         print("   A browser window will open for you to log in.")
         print()
 
-        client = AgentBrowserClient(session_id="notebooklm", headed=True)
+        client = AgentBrowserClient(session_id=DEFAULT_SESSION_ID, headed=True)
 
         try:
             client.connect()
-
-            # Navigate to NotebookLM (will redirect to Google login if needed)
-            client.navigate("https://notebooklm.google.com")
+            client.navigate(service_config["login_url"])
             time.sleep(2)
 
             snapshot = client.snapshot()
 
-            if client.check_auth(snapshot):
+            if not self._snapshot_indicates_auth(service, snapshot, client):
                 print("📄 Current page state:")
                 print(snapshot[:1000])
                 print()
-                print("⏳ Please complete Google login in the browser window...")
+                print("⏳ Please complete login in the browser window...")
                 print("   (This script will wait for you to finish)")
 
-                # Poll until authenticated
                 for _ in range(300):  # 5 minute timeout
                     time.sleep(2)
                     snapshot = client.snapshot()
-
-                    if not client.check_auth(snapshot):
-                        # Check if we're on NotebookLM
-                        if "notebooklm" in snapshot.lower() or "notebook" in snapshot.lower():
-                            print()
-                            print("✅ Authentication successful!")
-                            self._save_auth_info(authenticated=True)
-                            self._save_session_id(client.session_id)
-                            client.save_storage_state()
-                            return True
+                    if self._snapshot_indicates_auth(service, snapshot, client):
+                        print()
+                        print("✅ Authentication successful!")
+                        self._save_session_id(client.session_id)
+                        self.save_auth(service, client=client)
+                        return True
 
                 print()
                 print("❌ Authentication timeout")
                 return False
-            else:
-                # Already authenticated
-                print("✅ Already authenticated!")
-                self._save_auth_info(authenticated=True)
-                self._save_session_id(client.session_id)
-                client.save_storage_state()
-                return True
+
+            print("✅ Already authenticated!")
+            self._save_session_id(client.session_id)
+            self.save_auth(service, client=client)
+            return True
 
         except AgentBrowserError as e:
             print(f"❌ [{e.code}]: {e.message}")
@@ -192,7 +261,7 @@ class AuthManager:
         finally:
             client.disconnect()
 
-    def validate(self) -> bool:
+    def validate(self, service: str = "google") -> bool:
         """Validate current authentication is still valid"""
         print("🔍 Validating authentication...")
 
@@ -205,20 +274,19 @@ class AuthManager:
 
         try:
             client.connect()
-            client.navigate("https://notebooklm.google.com")
+            self.restore_auth(service, client=client)
+            client.navigate(self._get_service_config(service)["login_url"])
             time.sleep(2)
 
             snapshot = client.snapshot()
 
-            if client.check_auth(snapshot):
-                print("❌ Authentication expired")
-                self._save_auth_info(authenticated=False)
-                return False
-            else:
+            if self._snapshot_indicates_auth(service, snapshot, client):
                 print("✅ Authentication valid")
-                self._save_auth_info(authenticated=True)
-                client.save_storage_state()
+                self.save_auth(service, client=client)
                 return True
+
+            print("❌ Authentication expired")
+            return False
 
         except AgentBrowserError as e:
             print(f"⚠️ Validation error: {e.message}")
@@ -226,36 +294,44 @@ class AuthManager:
         finally:
             client.disconnect()
 
-    def clear(self):
-        """Clear all authentication data"""
+    def clear(self, service: str = None):
+        """Clear authentication data"""
         print("🧹 Clearing authentication data...")
 
-        if self.AUTH_INFO_FILE.exists():
-            self.AUTH_INFO_FILE.unlink()
-            print("   ✓ Removed auth_info.json")
+        if service:
+            auth_file = self._auth_file(service)
+            if auth_file.exists():
+                auth_file.unlink()
+                print(f"   ✓ Removed {auth_file.name}")
+        else:
+            for config in self.SERVICES.values():
+                auth_file = config["file"]
+                if auth_file.exists():
+                    auth_file.unlink()
+                    print(f"   ✓ Removed {auth_file.name}")
 
-        if AGENT_BROWSER_SESSION_FILE.exists():
-            AGENT_BROWSER_SESSION_FILE.unlink()
-            print("   ✓ Removed session_id")
+            if AGENT_BROWSER_SESSION_FILE.exists():
+                AGENT_BROWSER_SESSION_FILE.unlink()
+                print("   ✓ Removed session_id")
 
         print("✅ Authentication data cleared")
         print("   Note: Browser profile preserved. Run 'reauth' for full reset.")
 
-    def status(self):
+    def status(self, service: str = None):
         """Show current authentication status"""
-        info = self.get_auth_info()
-
         print("🔐 Authentication Status")
         print("=" * 40)
 
-        if info.get("authenticated"):
-            print(f"   Status: ✅ Authenticated")
-            print(f"   Since: {info.get('timestamp', 'Unknown')}")
-            if info.get('email'):
-                print(f"   Email: {info.get('email')}")
-        else:
-            print(f"   Status: ❌ Not authenticated")
-            print(f"   Run: python scripts/run.py auth_manager.py setup")
+        services = [service] if service else list(self.SERVICES.keys())
+        for service_name in services:
+            info = self.get_auth_info(service_name)
+            print(f"Service: {service_name}")
+            if info.get("authenticated"):
+                print("   Status: ✅ Authenticated")
+                print(f"   Since: {info.get('timestamp', 'Unknown')}")
+            else:
+                print("   Status: ❌ Not authenticated")
+                print(f"   Run: python scripts/run.py auth_manager.py setup --service {service_name}")
 
         session_id = self._load_session_id()
         if session_id:
@@ -297,24 +373,27 @@ def main():
     parser = argparse.ArgumentParser(description='Manage NotebookLM authentication')
     parser.add_argument('command', choices=['setup', 'status', 'validate', 'reauth', 'clear', 'stop-daemon', 'watchdog-status'],
                        help='Command to run')
+    parser.add_argument('--service', choices=list(AuthManager.SERVICES.keys()),
+                        help='Auth service (default: google)')
 
     args = parser.parse_args()
     auth = AuthManager()
 
     if args.command == 'setup':
-        success = auth.setup()
+        success = auth.setup(service=args.service)
         sys.exit(0 if success else 1)
     elif args.command == 'status':
-        auth.status()
+        auth.status(service=args.service)
     elif args.command == 'validate':
-        success = auth.validate()
+        success = auth.validate(service=args.service or "google")
         sys.exit(0 if success else 1)
     elif args.command == 'reauth':
-        auth.clear()
-        success = auth.setup()
+        service = args.service or "google"
+        auth.clear(service=None if args.service is None else service)
+        success = auth.setup(service=service)
         sys.exit(0 if success else 1)
     elif args.command == 'clear':
-        auth.clear()
+        auth.clear(service=args.service)
     elif args.command == 'stop-daemon':
         success = auth.stop_daemon()
         sys.exit(0 if success else 1)

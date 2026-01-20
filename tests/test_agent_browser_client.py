@@ -87,5 +87,17 @@ class AgentBrowserClientShutdownTests(unittest.TestCase):
             self.assertFalse(client.shutdown(timeout=0.1))
 
 
+class AgentBrowserClientAuthTests(unittest.TestCase):
+    def test_check_auth_detects_login_fields(self):
+        snapshot = 'textbox "Email or phone" [ref=e1]'
+        client = AgentBrowserClient(session_id="test")
+        self.assertTrue(client.check_auth(snapshot))
+
+    def test_check_auth_ignores_login_in_content(self):
+        snapshot = 'text: "keeps cookies and login state"'
+        client = AgentBrowserClient(session_id="test")
+        self.assertFalse(client.check_auth(snapshot))
+
+
 if __name__ == "__main__":
     unittest.main()

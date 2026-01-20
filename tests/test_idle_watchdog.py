@@ -37,6 +37,52 @@ class IdleWatchdogTests(unittest.TestCase):
 
             os.environ.pop("AGENT_BROWSER_OWNER_PID", None)
 
+    def test_record_activity_preserves_owner_when_env_missing_and_alive(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            activity_path = Path(tmpdir) / "last_activity.json"
+            pid_path = Path(tmpdir) / "watchdog.pid"
+
+            activity_path.write_text(json.dumps({
+                "timestamp": time.time() - 5,
+                "owner_pid": 4242
+            }))
+
+            with mock.patch.object(abc, "AGENT_BROWSER_ACTIVITY_FILE", activity_path), \
+                mock.patch.object(abc, "AGENT_BROWSER_WATCHDOG_PID_FILE", pid_path), \
+                mock.patch.object(AgentBrowserClient, "_ensure_watchdog") as ensure_watchdog, \
+                mock.patch.object(AgentBrowserClient, "_pid_is_alive", return_value=True):
+                os.environ.pop("AGENT_BROWSER_OWNER_PID", None)
+
+                client = AgentBrowserClient(session_id="test")
+                client._record_activity()
+
+                ensure_watchdog.assert_called_once()
+                payload = json.loads(activity_path.read_text())
+                self.assertEqual(payload.get("owner_pid"), 4242)
+
+    def test_record_activity_drops_owner_when_env_missing_and_dead(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            activity_path = Path(tmpdir) / "last_activity.json"
+            pid_path = Path(tmpdir) / "watchdog.pid"
+
+            activity_path.write_text(json.dumps({
+                "timestamp": time.time() - 5,
+                "owner_pid": 4242
+            }))
+
+            with mock.patch.object(abc, "AGENT_BROWSER_ACTIVITY_FILE", activity_path), \
+                mock.patch.object(abc, "AGENT_BROWSER_WATCHDOG_PID_FILE", pid_path), \
+                mock.patch.object(AgentBrowserClient, "_ensure_watchdog") as ensure_watchdog, \
+                mock.patch.object(AgentBrowserClient, "_pid_is_alive", return_value=False):
+                os.environ.pop("AGENT_BROWSER_OWNER_PID", None)
+
+                client = AgentBrowserClient(session_id="test")
+                client._record_activity()
+
+                ensure_watchdog.assert_called_once()
+                payload = json.loads(activity_path.read_text())
+                self.assertIsNone(payload.get("owner_pid"))
+
     def test_should_shutdown_on_idle_timeout(self):
         idle_timeout = 600
         self.assertTrue(
