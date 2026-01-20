@@ -196,7 +196,7 @@ Save NotebookLM links with tags and descriptions. Claude auto-selects the right 
 One-time Google login with cached cookies/local storage to reuse after daemon restarts.
 
 ### **Z-Library Import**
-Download books from Z-Library URLs and upload directly to NotebookLM (EPUB converted to Markdown, large files auto-split).
+Download books from Z-Library URLs (including `/dl/` direct links) and upload directly to NotebookLM (EPUB converted to Markdown, large files auto-split).
 
 ### **Self-Contained**
 Everything runs in the skill folder with an isolated Python environment. No global installations.
@@ -229,6 +229,9 @@ python scripts/run.py auth_manager.py setup --service zlibrary
 
 # Add a book from Z-Library
 python scripts/run.py source_manager.py add --url "https://zh.zlib.li/book/..."
+
+# Direct download links are also supported
+python scripts/run.py source_manager.py add --url "https://zh.zlib.li/dl/..."
 ```
 
 ---
