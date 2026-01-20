@@ -10,7 +10,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -315,7 +315,7 @@ class AuthManager:
             token, cookies = extracted
             payload["notebooklm_auth_token"] = token
             payload["notebooklm_cookies"] = cookies
-            payload["notebooklm_updated_at"] = datetime.utcnow().isoformat()
+            payload["notebooklm_updated_at"] = datetime.now(timezone.utc).isoformat()
             auth_file.parent.mkdir(parents=True, exist_ok=True)
             auth_file.write_text(json.dumps(payload))
             return {"auth_token": token, "cookies": cookies}

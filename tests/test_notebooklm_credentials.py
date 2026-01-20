@@ -113,6 +113,7 @@ class NotebookLMCredentialsTests(unittest.TestCase):
             saved = json.loads(google_file.read_text())
             self.assertEqual(saved["notebooklm_auth_token"], "token-xyz")
             self.assertEqual(saved["notebooklm_cookies"], "SID=abc; HSID=def")
+            self.assertTrue(saved["notebooklm_updated_at"].endswith("+00:00"))
 
     def test_get_notebooklm_credentials_calls_setup_on_failure(self):
         with tempfile.TemporaryDirectory() as tmpdir:
