@@ -39,7 +39,51 @@ class DummyClient:
         return True
 
 
+class DummyClientNoToken:
+    def __init__(self):
+        self.evaluated = []
+
+    def evaluate(self, script: str):
+        self.evaluated.append(script)
+        return None
+
+    def get_cookies(self, urls=None):
+        return []
+
+
 class NotebookLMCredentialsTests(unittest.TestCase):
+    def test_get_notebooklm_credentials_uses_cached_values(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_dir = Path(tmpdir) / "data"
+            auth_dir = data_dir / "auth"
+            auth_dir.mkdir(parents=True, exist_ok=True)
+            google_file = auth_dir / "google.json"
+            google_file.write_text(
+                json.dumps(
+                    {
+                        "notebooklm_auth_token": "cached-token",
+                        "notebooklm_cookies": "SID=abc",
+                    }
+                )
+            )
+
+            services = {
+                "google": {
+                    "file": google_file,
+                    "login_url": "https://notebooklm.google.com",
+                    "success_indicators": ["notebooklm"],
+                }
+            }
+
+            with mock.patch.object(auth_manager, "DATA_DIR", data_dir), \
+                mock.patch.object(auth_manager, "AUTH_DIR", auth_dir), \
+                mock.patch.object(auth_manager.AuthManager, "SERVICES", services):
+                auth = auth_manager.AuthManager()
+                result = auth.get_notebooklm_credentials(client=None)
+
+            self.assertEqual(result["auth_token"], "cached-token")
+            self.assertEqual(result["cookies"], "SID=abc")
+
     def test_get_notebooklm_credentials_persists_to_google_auth(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             data_dir = Path(tmpdir) / "data"
@@ -69,6 +113,45 @@ class NotebookLMCredentialsTests(unittest.TestCase):
             saved = json.loads(google_file.read_text())
             self.assertEqual(saved["notebooklm_auth_token"], "token-xyz")
             self.assertEqual(saved["notebooklm_cookies"], "SID=abc; HSID=def")
+
+    def test_get_notebooklm_credentials_calls_setup_on_failure(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_dir = Path(tmpdir) / "data"
+            auth_dir = data_dir / "auth"
+            auth_dir.mkdir(parents=True, exist_ok=True)
+            google_file = auth_dir / "google.json"
+            google_file.write_text(json.dumps({"cookies": [], "origins": []}))
+
+            services = {
+                "google": {
+                    "file": google_file,
+                    "login_url": "https://notebooklm.google.com",
+                    "success_indicators": ["notebooklm"],
+                }
+            }
+
+            def fake_setup(service="google"):
+                google_file.write_text(
+                    json.dumps(
+                        {
+                            "notebooklm_auth_token": "new-token",
+                            "notebooklm_cookies": "SID=new",
+                        }
+                    )
+                )
+                return True
+
+            with mock.patch.object(auth_manager, "DATA_DIR", data_dir), \
+                mock.patch.object(auth_manager, "AUTH_DIR", auth_dir), \
+                mock.patch.object(auth_manager.AuthManager, "SERVICES", services), \
+                mock.patch.object(auth_manager.AuthManager, "setup", side_effect=fake_setup) as setup:
+                auth = auth_manager.AuthManager()
+                client = DummyClientNoToken()
+                result = auth.get_notebooklm_credentials(client=client)
+
+            self.assertEqual(result["auth_token"], "new-token")
+            self.assertEqual(result["cookies"], "SID=new")
+            self.assertTrue(setup.called)
 
 
 if __name__ == "__main__":

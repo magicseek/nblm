@@ -277,6 +277,89 @@ class AuthManager:
         finally:
             client.disconnect()
 
+    def get_notebooklm_credentials(
+        self,
+        client: AgentBrowserClient = None,
+        force_refresh: bool = False,
+    ) -> dict:
+        """Return NotebookLM auth token and cookie header, persisting if refreshed."""
+        auth_file = self._auth_file("google")
+        payload = {}
+        if auth_file.exists():
+            try:
+                payload = json.loads(auth_file.read_text())
+            except Exception:
+                payload = {}
+
+        token = payload.get("notebooklm_auth_token")
+        cookies = payload.get("notebooklm_cookies")
+        if token and cookies and not force_refresh:
+            return {"auth_token": token, "cookies": cookies}
+
+        extracted = None
+        owns_client = False
+        if client is None:
+            client = AgentBrowserClient(session_id=self._load_session_id() or DEFAULT_SESSION_ID)
+            client.connect()
+            owns_client = True
+
+        try:
+            extracted = self._extract_notebooklm_credentials(client)
+        except Exception:
+            extracted = None
+        finally:
+            if owns_client:
+                client.disconnect()
+
+        if extracted:
+            token, cookies = extracted
+            payload["notebooklm_auth_token"] = token
+            payload["notebooklm_cookies"] = cookies
+            payload["notebooklm_updated_at"] = datetime.utcnow().isoformat()
+            auth_file.parent.mkdir(parents=True, exist_ok=True)
+            auth_file.write_text(json.dumps(payload))
+            return {"auth_token": token, "cookies": cookies}
+
+        if self.setup(service="google"):
+            try:
+                payload = json.loads(auth_file.read_text())
+            except Exception:
+                payload = {}
+            token = payload.get("notebooklm_auth_token")
+            cookies = payload.get("notebooklm_cookies")
+            if token and cookies:
+                return {"auth_token": token, "cookies": cookies}
+
+        raise RuntimeError(
+            "NotebookLM auth token or cookies unavailable. "
+            "Run: python scripts/run.py auth_manager.py setup"
+        )
+
+    @staticmethod
+    def _build_cookie_header(cookies: list) -> str:
+        pairs = []
+        for cookie in cookies or []:
+            name = cookie.get("name")
+            value = cookie.get("value")
+            if name is None or value is None:
+                continue
+            pairs.append(f"{name}={value}")
+        return "; ".join(pairs)
+
+    def _extract_notebooklm_credentials(self, client: AgentBrowserClient):
+        login_url = self._get_service_config("google")["login_url"]
+        try:
+            client.navigate(login_url)
+        except Exception:
+            pass
+
+        token = client.evaluate("window.WIZ_global_data?.SNlM0e")
+        cookie_list = client.get_cookies(login_url)
+        cookie_header = self._build_cookie_header(cookie_list)
+        if not token or not cookie_header:
+            return None
+        return token, cookie_header
+
     def validate(self, service: str = "google") -> bool:
         """Validate current authentication is still valid"""
         print("🔍 Validating authentication...")
