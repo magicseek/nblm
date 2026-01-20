@@ -291,6 +291,16 @@ class AuthManager:
             except Exception:
                 payload = {}
 
+        env_token = os.environ.get("NOTEBOOKLM_AUTH_TOKEN")
+        env_cookies = os.environ.get("NOTEBOOKLM_COOKIES")
+        if env_token and env_cookies:
+            payload["notebooklm_auth_token"] = env_token
+            payload["notebooklm_cookies"] = env_cookies
+            payload["notebooklm_updated_at"] = datetime.now(timezone.utc).isoformat()
+            auth_file.parent.mkdir(parents=True, exist_ok=True)
+            auth_file.write_text(json.dumps(payload))
+            return {"auth_token": env_token, "cookies": env_cookies}
+
         token = payload.get("notebooklm_auth_token")
         cookies = payload.get("notebooklm_cookies")
         if token and cookies and not force_refresh:

@@ -52,6 +52,41 @@ class DummyClientNoToken:
 
 
 class NotebookLMCredentialsTests(unittest.TestCase):
+    def test_get_notebooklm_credentials_uses_env_values(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_dir = Path(tmpdir) / "data"
+            auth_dir = data_dir / "auth"
+            auth_dir.mkdir(parents=True, exist_ok=True)
+            google_file = auth_dir / "google.json"
+            google_file.write_text(json.dumps({"cookies": [], "origins": []}))
+
+            services = {
+                "google": {
+                    "file": google_file,
+                    "login_url": "https://notebooklm.google.com",
+                    "success_indicators": ["notebooklm"],
+                }
+            }
+
+            with mock.patch.object(auth_manager, "DATA_DIR", data_dir), \
+                mock.patch.object(auth_manager, "AUTH_DIR", auth_dir), \
+                mock.patch.object(auth_manager.AuthManager, "SERVICES", services), \
+                mock.patch.object(auth_manager.AuthManager, "setup", return_value=False), \
+                mock.patch.dict(
+                    auth_manager.os.environ,
+                    {"NOTEBOOKLM_AUTH_TOKEN": "env-token", "NOTEBOOKLM_COOKIES": "SID=env"},
+                    clear=False,
+                ):
+                auth = auth_manager.AuthManager()
+                result = auth.get_notebooklm_credentials(client=DummyClientNoToken())
+
+            self.assertEqual(result["auth_token"], "env-token")
+            self.assertEqual(result["cookies"], "SID=env")
+
+            saved = json.loads(google_file.read_text())
+            self.assertEqual(saved["notebooklm_auth_token"], "env-token")
+            self.assertEqual(saved["notebooklm_cookies"], "SID=env")
+
     def test_get_notebooklm_credentials_uses_cached_values(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             data_dir = Path(tmpdir) / "data"
