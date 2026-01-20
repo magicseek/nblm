@@ -22,6 +22,20 @@ function guessMimeType(filePath) {
   return undefined;
 }
 
+function extractTextFromRawData(rawData) {
+  if (!rawData) return '';
+  if (Array.isArray(rawData) && rawData.length > 0) {
+    const first = rawData[0];
+    if (Array.isArray(first) && first.length > 0 && typeof first[0] === 'string') {
+      return first[0];
+    }
+    if (typeof first === 'string') {
+      return first;
+    }
+  }
+  return '';
+}
+
 async function main() {
   if (args.length === 0) {
     throw new Error('Missing command');
@@ -93,6 +107,26 @@ async function main() {
           sourceIds,
           wasChunked: !!result.wasChunked,
           chunks: result.chunks || [],
+        })
+      );
+      return;
+    }
+
+    if (command === 'chat') {
+      const notebookId = getArg('--notebook-id');
+      const prompt = getArg('--prompt');
+      if (!notebookId || !prompt) {
+        throw new Error('Missing --notebook-id or --prompt');
+      }
+
+      const response = await client.generation.chat(notebookId, prompt);
+      const text = extractTextFromRawData(response.rawData) || response.text || '';
+      console.log(
+        JSON.stringify({
+          success: true,
+          text,
+          citations: response.citations || [],
+          conversationId: response.conversationId || null,
         })
       );
       return;

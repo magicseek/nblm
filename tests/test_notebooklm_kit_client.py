@@ -97,6 +97,29 @@ class NotebookLMKitClientTests(unittest.TestCase):
             self.assertEqual(auth.calls, [False, True])
             self.assertEqual(runner.call_count, 2)
 
+    def test_chat_returns_text(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bridge_path = Path(tmpdir) / "bridge.mjs"
+            bridge_path.write_text("// placeholder")
+            runner = mock.Mock()
+            runner.return_value = mock.Mock(
+                returncode=0,
+                stdout=json.dumps({"text": "api answer", "citations": [1]}),
+                stderr="",
+            )
+            client = NotebookLMKitClient(
+                auth_provider=DummyAuthProvider(),
+                runner=runner,
+                node_path="node",
+                script_path=bridge_path,
+            )
+
+            result = client.chat("nb123", "What is this?")
+
+            self.assertEqual(result["text"], "api answer")
+            cmd = runner.call_args[0][0]
+            self.assertIn("chat", cmd)
+
 
 if __name__ == "__main__":
     unittest.main()

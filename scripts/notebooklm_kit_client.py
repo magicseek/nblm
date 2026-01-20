@@ -68,6 +68,21 @@ class NotebookLMKitClient:
             "chunks": payload.get("chunks"),
         }
 
+    def chat(self, notebook_id: str, prompt: str) -> dict:
+        """Chat with a notebook and return {text, citations}."""
+        payload = self._run([
+            "chat",
+            "--notebook-id",
+            notebook_id,
+            "--prompt",
+            prompt,
+        ])
+        return {
+            "text": payload.get("text", ""),
+            "citations": payload.get("citations", []),
+            "conversation_id": payload.get("conversationId"),
+        }
+
     def _run(self, args: list[str]) -> dict:
         return self._run_with_retry(args, force_refresh=False)
 
