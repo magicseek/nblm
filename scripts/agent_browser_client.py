@@ -455,8 +455,23 @@ class AgentBrowserClient:
 
     def _get_cookies(self) -> list:
         """Return all cookies from the current context"""
-        response = self._send_command("cookies_get")
+        return self.get_cookies()
+
+    def get_cookies(self, urls: Optional[object] = None) -> list:
+        """Return cookies for the provided URL(s) or all cookies when omitted"""
+        params = {}
+        if urls:
+            if isinstance(urls, (list, tuple)):
+                params["urls"] = list(urls)
+            else:
+                params["urls"] = [str(urls)]
+        response = self._send_command("cookies_get", params or None)
         return response.get("cookies", [])
+
+    def evaluate(self, script: str):
+        """Evaluate a script in the page context and return the result"""
+        response = self._send_command("evaluate", {"script": script})
+        return response.get("result")
 
     def _set_cookies(self, cookies: list):
         """Set cookies on the current context"""

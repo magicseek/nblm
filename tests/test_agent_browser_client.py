@@ -99,5 +99,21 @@ class AgentBrowserClientAuthTests(unittest.TestCase):
         self.assertFalse(client.check_auth(snapshot))
 
 
+class AgentBrowserClientEvaluateTests(unittest.TestCase):
+    def test_evaluate_sends_script(self):
+        client = AgentBrowserClient(session_id="test")
+        with mock.patch.object(client, "_send_command", return_value={"result": "value"}) as send:
+            result = client.evaluate("return 1")
+        self.assertEqual(result, "value")
+        send.assert_called_once_with("evaluate", {"script": "return 1"})
+
+    def test_get_cookies_uses_urls(self):
+        client = AgentBrowserClient(session_id="test")
+        with mock.patch.object(client, "_send_command", return_value={"cookies": [{"name": "SID"}]}) as send:
+            cookies = client.get_cookies("https://notebooklm.google.com")
+        self.assertEqual(cookies, [{"name": "SID"}])
+        send.assert_called_once_with("cookies_get", {"urls": ["https://notebooklm.google.com"]})
+
+
 if __name__ == "__main__":
     unittest.main()
