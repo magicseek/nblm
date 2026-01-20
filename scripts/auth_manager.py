@@ -7,10 +7,14 @@ Handles Google authentication using agent-browser
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
+from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -82,6 +86,9 @@ def get_watchdog_status() -> dict:
         "owner_alive": owner_alive,
         "daemon_running": daemon_running
     }
+
+
+NOTEBOOKLM_AUTH_TTL_DAYS = 10
 
 
 class AuthManager:
@@ -301,10 +308,29 @@ class AuthManager:
             auth_file.write_text(json.dumps(payload))
             return {"auth_token": env_token, "cookies": env_cookies}
 
-        token = payload.get("notebooklm_auth_token")
-        cookies = payload.get("notebooklm_cookies")
-        if token and cookies and not force_refresh:
+        cached_token = payload.get("notebooklm_auth_token")
+        cached_cookies = payload.get("notebooklm_cookies")
+        if cached_token and cached_cookies and not force_refresh:
+            if self._notebooklm_credentials_fresh(payload):
+                return {"auth_token": cached_token, "cookies": cached_cookies}
+
+        http_credentials = None
+        try:
+            http_credentials = self._fetch_notebooklm_token_http(payload)
+        except Exception:
+            http_credentials = None
+
+        if http_credentials:
+            token, cookies = http_credentials
+            payload["notebooklm_auth_token"] = token
+            payload["notebooklm_cookies"] = cookies
+            payload["notebooklm_updated_at"] = datetime.now(timezone.utc).isoformat()
+            auth_file.parent.mkdir(parents=True, exist_ok=True)
+            auth_file.write_text(json.dumps(payload))
             return {"auth_token": token, "cookies": cookies}
+
+        if cached_token and cached_cookies and not force_refresh:
+            return {"auth_token": cached_token, "cookies": cached_cookies}
 
         extracted = None
         owns_client = False
@@ -330,6 +356,9 @@ class AuthManager:
             auth_file.write_text(json.dumps(payload))
             return {"auth_token": token, "cookies": cookies}
 
+        if cached_token and cached_cookies:
+            return {"auth_token": cached_token, "cookies": cached_cookies}
+
         if self.setup(service="google"):
             try:
                 payload = json.loads(auth_file.read_text())
@@ -344,6 +373,80 @@ class AuthManager:
             "NotebookLM auth token or cookies unavailable. "
             "Run: python scripts/run.py auth_manager.py setup"
         )
+
+    @staticmethod
+    def _extract_notebooklm_token_from_html(html: str) -> Optional[str]:
+        if not html:
+            return None
+        candidates = [html]
+        if '\\"' in html:
+            candidates.append(html.replace('\\"', '"'))
+        patterns = [
+            r'"SNlM0e"\s*:\s*"([^"]+)"',
+            r'SNlM0e"\s*,\s*"([^"]+)"',
+        ]
+        for candidate in candidates:
+            for pattern in patterns:
+                match = re.search(pattern, candidate)
+                if match:
+                    token = match.group(1)
+                    return token.replace("\\u003d", "=")
+        return None
+
+    @staticmethod
+    def _notebooklm_credentials_fresh(payload: dict) -> bool:
+        updated_at = payload.get("notebooklm_updated_at")
+        if not updated_at:
+            return False
+        try:
+            timestamp = datetime.fromisoformat(updated_at)
+        except Exception:
+            return False
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - timestamp
+        return age <= timedelta(days=NOTEBOOKLM_AUTH_TTL_DAYS)
+
+    @staticmethod
+    def _filter_cookies_for_domains(cookies: list, substrings: list) -> list:
+        filtered = []
+        for cookie in cookies or []:
+            domain = (cookie.get("domain") or "").lower()
+            if any(sub in domain for sub in substrings):
+                filtered.append(cookie)
+        return filtered
+
+    def _fetch_notebooklm_token_http(self, payload: dict) -> Optional[tuple]:
+        cookies = payload.get("cookies") or []
+        filtered = self._filter_cookies_for_domains(cookies, ["google", "notebooklm"])
+        cookie_header = self._build_cookie_header(filtered)
+        if not cookie_header:
+            return None
+        request = Request(
+            "https://notebooklm.google.com/",
+            headers={
+                "Cookie": cookie_header,
+                "User-Agent": (
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+            },
+        )
+        try:
+            with urlopen(request, timeout=15) as response:
+                final_url = response.geturl() or ""
+                html = response.read().decode("utf-8", errors="replace")
+        except (URLError, HTTPError, ValueError, TimeoutError):
+            return None
+        if "notebooklm.google.com" not in final_url:
+            return None
+        if "accounts.google.com" in html or "Sign in" in html:
+            return None
+        token = self._extract_notebooklm_token_from_html(html)
+        if not token:
+            return None
+        return token, cookie_header
 
     @staticmethod
     def _build_cookie_header(cookies: list) -> str:
