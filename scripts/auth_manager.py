@@ -301,12 +301,7 @@ class AuthManager:
         env_token = os.environ.get("NOTEBOOKLM_AUTH_TOKEN")
         env_cookies = os.environ.get("NOTEBOOKLM_COOKIES")
         if env_token and env_cookies:
-            payload["notebooklm_auth_token"] = env_token
-            payload["notebooklm_cookies"] = env_cookies
-            payload["notebooklm_updated_at"] = datetime.now(timezone.utc).isoformat()
-            auth_file.parent.mkdir(parents=True, exist_ok=True)
-            auth_file.write_text(json.dumps(payload))
-            return {"auth_token": env_token, "cookies": env_cookies}
+            return self._persist_notebooklm_credentials(auth_file, payload, env_token, env_cookies)
 
         cached_token = payload.get("notebooklm_auth_token")
         cached_cookies = payload.get("notebooklm_cookies")
@@ -322,12 +317,7 @@ class AuthManager:
 
         if http_credentials:
             token, cookies = http_credentials
-            payload["notebooklm_auth_token"] = token
-            payload["notebooklm_cookies"] = cookies
-            payload["notebooklm_updated_at"] = datetime.now(timezone.utc).isoformat()
-            auth_file.parent.mkdir(parents=True, exist_ok=True)
-            auth_file.write_text(json.dumps(payload))
-            return {"auth_token": token, "cookies": cookies}
+            return self._persist_notebooklm_credentials(auth_file, payload, token, cookies)
 
         if cached_token and cached_cookies and not force_refresh:
             return {"auth_token": cached_token, "cookies": cached_cookies}
@@ -340,6 +330,7 @@ class AuthManager:
             owns_client = True
 
         try:
+            self.restore_auth("google", client=client)
             extracted = self._extract_notebooklm_credentials(client)
         except Exception:
             extracted = None
@@ -349,12 +340,7 @@ class AuthManager:
 
         if extracted:
             token, cookies = extracted
-            payload["notebooklm_auth_token"] = token
-            payload["notebooklm_cookies"] = cookies
-            payload["notebooklm_updated_at"] = datetime.now(timezone.utc).isoformat()
-            auth_file.parent.mkdir(parents=True, exist_ok=True)
-            auth_file.write_text(json.dumps(payload))
-            return {"auth_token": token, "cookies": cookies}
+            return self._persist_notebooklm_credentials(auth_file, payload, token, cookies)
 
         if cached_token and cached_cookies:
             return {"auth_token": cached_token, "cookies": cached_cookies}
@@ -364,6 +350,29 @@ class AuthManager:
                 payload = json.loads(auth_file.read_text())
             except Exception:
                 payload = {}
+            http_credentials = None
+            try:
+                http_credentials = self._fetch_notebooklm_token_http(payload)
+            except Exception:
+                http_credentials = None
+            if http_credentials:
+                token, cookies = http_credentials
+                return self._persist_notebooklm_credentials(auth_file, payload, token, cookies)
+
+            extracted = None
+            client = AgentBrowserClient(session_id=self._load_session_id() or DEFAULT_SESSION_ID)
+            client.connect()
+            try:
+                self.restore_auth("google", client=client)
+                extracted = self._extract_notebooklm_credentials(client)
+            except Exception:
+                extracted = None
+            finally:
+                client.disconnect()
+            if extracted:
+                token, cookies = extracted
+                return self._persist_notebooklm_credentials(auth_file, payload, token, cookies)
+
             token = payload.get("notebooklm_auth_token")
             cookies = payload.get("notebooklm_cookies")
             if token and cookies:
@@ -458,6 +467,15 @@ class AuthManager:
                 continue
             pairs.append(f"{name}={value}")
         return "; ".join(pairs)
+
+    @staticmethod
+    def _persist_notebooklm_credentials(auth_file: Path, payload: dict, token: str, cookies: str) -> dict:
+        payload["notebooklm_auth_token"] = token
+        payload["notebooklm_cookies"] = cookies
+        payload["notebooklm_updated_at"] = datetime.now(timezone.utc).isoformat()
+        auth_file.parent.mkdir(parents=True, exist_ok=True)
+        auth_file.write_text(json.dumps(payload))
+        return {"auth_token": token, "cookies": cookies}
 
     def _extract_notebooklm_credentials(self, client: AgentBrowserClient):
         login_url = self._get_service_config("google")["login_url"]

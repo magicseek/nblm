@@ -539,6 +539,13 @@ class AgentBrowserClient:
         response = self._send_command("fill", {"selector": f"@{ref}", "value": text})
         return response
 
+    def upload(self, selector: str, files) -> Dict[str, Any]:
+        """Upload file(s) using an input selector"""
+        file_list = files if isinstance(files, list) else [files]
+        print(f"📤 Uploading {len(file_list)} file(s)")
+        response = self._send_command("upload", {"selector": selector, "files": file_list})
+        return response
+
     def type_text(self, ref: str, text: str, submit: bool = False) -> Dict[str, Any]:
         """Type text into element (appends to existing)"""
         print(f"⌨️ Typing into ref={ref}")
@@ -557,6 +564,11 @@ class AgentBrowserClient:
         response = self._send_command("wait", {"timeout": timeout * 1000})
         return response
 
+    def wait_for_selector(self, selector: str, timeout_ms: int = 10000, state: str = "attached") -> Dict[str, Any]:
+        """Wait for a selector to appear in the DOM."""
+        params = {"selector": selector, "timeout": timeout_ms, "state": state}
+        return self._send_command("wait", params)
+
     # === Utility Methods ===
 
     def check_auth(self, snapshot: str = None) -> bool:
@@ -573,6 +585,10 @@ class AgentBrowserClient:
             "sign in",
             "log in",
             "login",
+            "choose an account",
+            "select an account",
+            "use another account",
+            "signed out",
         )
 
         for line in snapshot.splitlines():

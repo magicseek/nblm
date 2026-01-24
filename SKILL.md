@@ -196,6 +196,9 @@ python scripts/run.py source_manager.py add --url "https://zh.zlib.li/book/..."
 python scripts/run.py source_manager.py add --file "/path/to/book.pdf"
 python scripts/run.py source_manager.py add --url "..." --notebook-id NOTEBOOK_ID
 ```
+Uploads wait for NotebookLM processing and print progress as `Ready: N/T`. Press Ctrl+C to stop waiting.
+Local file uploads use browser automation and require Google authentication.
+If browser automation is unavailable, set `NOTEBOOKLM_UPLOAD_MODE=text` to upload extracted text instead (PDFs require `pypdf`).
 
 ### Data Cleanup (`cleanup_manager.py`)
 ```bash

@@ -236,6 +236,18 @@ python scripts/run.py source_manager.py add --url "https://zh.zlib.li/dl/..."
 
 ---
 
+## Local File Uploads
+
+```bash
+python scripts/run.py source_manager.py add --file "/path/to/book.pdf"
+```
+
+Uploads block until NotebookLM finishes processing. Progress is printed as `Ready: N/T`. Press Ctrl+C to stop waiting without removing the uploaded source.
+Local file uploads use browser automation, so ensure Google authentication is set up.
+If browser automation is unavailable, set `NOTEBOOKLM_UPLOAD_MODE=text` to upload extracted text instead (PDFs require `pypdf`).
+
+---
+
 ## Real-World Examples
 
 ### Example 1: Workshop Manual Query

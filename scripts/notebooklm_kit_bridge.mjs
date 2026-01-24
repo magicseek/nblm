@@ -112,6 +112,75 @@ async function main() {
       return;
     }
 
+    if (command === 'add-text') {
+      const notebookId = getArg('--notebook-id');
+      const title = getArg('--title', undefined);
+      const contentArg = getArg('--content', undefined);
+      const filePath = getArg('--file', undefined);
+      if (!notebookId) {
+        throw new Error('Missing --notebook-id');
+      }
+
+      let content = contentArg;
+      if (!content && filePath) {
+        content = await readFile(filePath, 'utf-8');
+      }
+      if (!content) {
+        throw new Error('Missing --content or --file');
+      }
+
+      const result = await client.sources.addFromText(notebookId, {
+        content,
+        ...(title ? { title } : {}),
+      });
+
+      if (typeof result === 'string') {
+        console.log(
+          JSON.stringify({
+            success: true,
+            sourceId: result,
+            sourceIds: [result],
+            wasChunked: false,
+          })
+        );
+        return;
+      }
+
+      const sourceIds = result.allSourceIds || result.sourceIds || [];
+      console.log(
+        JSON.stringify({
+          success: true,
+          sourceIds,
+          wasChunked: !!result.wasChunked,
+          chunks: result.chunks || [],
+        })
+      );
+      return;
+    }
+
+    if (command === 'list-sources') {
+      const notebookId = getArg('--notebook-id');
+      if (!notebookId) {
+        throw new Error('Missing --notebook-id');
+      }
+
+      const sources = await client.sources.list(notebookId);
+      const simplified = (sources || []).map((source) => ({
+        sourceId: source.sourceId ?? source.id ?? null,
+        title: source.title ?? null,
+        status: source.status ?? source.state ?? null,
+        type: source.type ?? null,
+      }));
+
+      console.log(
+        JSON.stringify({
+          success: true,
+          sources: simplified,
+        })
+      );
+      return;
+    }
+
     if (command === 'chat') {
       const notebookId = getArg('--notebook-id');
       const prompt = getArg('--prompt');

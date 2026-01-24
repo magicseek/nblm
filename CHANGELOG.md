@@ -14,10 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - API fallback for `ask_question.py` via notebooklm-kit when daemon is unavailable
 - Environment variable support for `NOTEBOOKLM_AUTH_TOKEN` and `NOTEBOOKLM_COOKIES`
 - HTTP-first refresh for NotebookLM auth tokens using stored cookies with a 10-day staleness policy
+- Upload progress tracking that waits for NotebookLM source processing to complete
+- Text upload fallback when browser automation is unavailable (set `NOTEBOOKLM_UPLOAD_MODE=text`)
+- PDF text extraction fallback via `pypdf`
 
 ### Fixed
 - Z-Library direct download (`/dl/`) links wait for downloads before navigation
 - Z-Library auth detection recognizes login/logout indicators
+- NotebookLM auth extraction restores saved browser state and persists tokens after setup
+- File uploads now use browser automation so the actual file contents are uploaded
 
 ## [2.0.0] - 2026-01-18
 

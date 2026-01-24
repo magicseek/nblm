@@ -68,6 +68,47 @@ class NotebookLMKitClient:
             "chunks": payload.get("chunks"),
         }
 
+    def add_text(self, notebook_id: str, content_path: Path, title: Optional[str] = None) -> dict:
+        """Upload text content and return {source_ids, was_chunked, chunks}."""
+        args = [
+            "add-text",
+            "--notebook-id",
+            notebook_id,
+            "--file",
+            str(content_path),
+        ]
+        if title:
+            args += ["--title", title]
+        payload = self._run(args)
+        source_ids = []
+        if "sourceId" in payload:
+            source_ids = [payload["sourceId"]]
+        elif "sourceIds" in payload:
+            source_ids = payload["sourceIds"] or []
+        elif "allSourceIds" in payload:
+            source_ids = payload["allSourceIds"] or []
+        if not source_ids:
+            raise NotebookLMKitError("Source IDs missing from notebooklm-kit response")
+        return {
+            "source_ids": source_ids,
+            "was_chunked": bool(payload.get("wasChunked")),
+            "chunks": payload.get("chunks"),
+        }
+
+    def list_sources(self, notebook_id: str) -> list[dict]:
+        """List sources for a notebook."""
+        payload = self._run([
+            "list-sources",
+            "--notebook-id",
+            notebook_id,
+        ])
+        sources = payload.get("sources")
+        if sources is None:
+            raise NotebookLMKitError("Sources missing from notebooklm-kit response")
+        if not isinstance(sources, list):
+            raise NotebookLMKitError("NotebookLM kit bridge returned unexpected sources payload")
+        return sources
+
     def chat(self, notebook_id: str, prompt: str) -> dict:
         """Chat with a notebook and return {text, citations}."""
         payload = self._run([
