@@ -120,3 +120,65 @@ class NotebookLMWrapper:
             token in message
             for token in ("401", "403", "unauthorized", "not authenticated", "invalid token")
         )
+
+    async def _with_retry(self, coro_func, max_retries: int = 1):
+        """Execute coroutine with token refresh retry on auth errors."""
+        try:
+            return await coro_func()
+        except Exception as e:
+            if self._is_auth_error(e) and max_retries > 0:
+                await self._refresh_tokens()
+                return await self._with_retry(coro_func, max_retries - 1)
+            raise NotebookLMError(str(e), code="API_ERROR")
+
+    async def _refresh_tokens(self):
+        """Refresh tokens using agent-browser."""
+        # Import here to avoid circular dependency
+        from auth_manager import AuthManager
+
+        auth_manager = AuthManager()
+        # This is synchronous but we call it from async context
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, auth_manager.refresh_notebooklm_tokens)
+
+        # Reload auth data
+        self._auth_data = self._load_auth_file()
+
+        # Recreate client with fresh tokens
+        if self._client:
+            await self._client.__aexit__(None, None, None)
+        auth_tokens = self._create_auth_tokens(self._auth_data)
+        self._client = NotebookLMClient(auth_tokens)
+        await self._client.__aenter__()
+
+    # === Notebooks API ===
+
+    async def create_notebook(self, name: str) -> dict:
+        """Create a new notebook."""
+        async def _create():
+            notebook = await self._client.notebooks.create(name)
+            return {
+                "id": notebook.id,
+                "title": notebook.title,
+            }
+        return await self._with_retry(_create)
+
+    async def list_notebooks(self) -> List[dict]:
+        """List all notebooks."""
+        async def _list():
+            notebooks = await self._client.notebooks.list()
+            return [
+                {
+                    "id": nb.id,
+                    "title": nb.title,
+                }
+                for nb in notebooks
+            ]
+        return await self._with_retry(_list)
+
+    async def delete_notebook(self, notebook_id: str) -> bool:
+        """Delete a notebook."""
+        async def _delete():
+            await self._client.notebooks.delete(notebook_id)
+            return True
+        return await self._with_retry(_delete)
