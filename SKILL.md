@@ -1,11 +1,128 @@
 ---
-name: notebooklm
+name: nblm
 description: Use this skill to query your Google NotebookLM notebooks directly from Claude Code for source-grounded, citation-backed answers from Gemini. Browser automation, library management, persistent auth. Drastically reduced hallucinations through document-only responses.
 ---
 
-# NotebookLM Research Assistant Skill
+# NotebookLM Quick Commands
 
-Interact with Google NotebookLM to query documentation with Gemini's source-grounded answers. Each question opens a fresh browser session, retrieves the answer exclusively from your uploaded documents, and closes.
+Query Google NotebookLM for source-grounded, citation-backed answers.
+
+## Usage
+
+`/nblm <command> [args]`
+
+## Commands
+
+### Notebook Management
+| Command | Description |
+|---------|-------------|
+| `login` | Authenticate with Google |
+| `status` | Show auth and library status |
+| `local` | List notebooks in local library |
+| `remote` | List all notebooks from NotebookLM API |
+| `create <name>` | Create a new notebook |
+| `delete [--id ID]` | Delete a notebook |
+| `rename <name> [--id ID]` | Rename a notebook |
+| `summary [--id ID]` | Get AI-generated summary |
+| `describe [--id ID]` | Get description and suggested topics |
+| `add <url>` | Add notebook to local library |
+| `activate <id>` | Set active notebook |
+
+### Source Management
+| Command | Description |
+|---------|-------------|
+| `sources [--id ID]` | List sources in notebook |
+| `upload <file>` | Upload local file (PDF, TXT, MD, DOCX) |
+| `upload-zlib <url>` | Download from Z-Library and upload |
+| `upload-url <url>` | Add URL as source |
+| `upload-youtube <url>` | Add YouTube video as source |
+| `upload-text <title> [--content TEXT]` | Add text as source |
+| `source-text <source-id>` | Get full indexed text |
+| `source-guide <source-id>` | Get AI summary and keywords |
+| `source-rename <source-id> <name>` | Rename a source |
+| `source-refresh <source-id>` | Re-fetch URL content |
+| `source-delete <source-id>` | Delete a source |
+
+### Chat & Audio
+| Command | Description |
+|---------|-------------|
+| `ask <question>` | Query NotebookLM |
+| `podcast [--instructions TEXT]` | Generate audio podcast |
+
+## Command Routing
+
+Based on `$ARGUMENTS`, execute the appropriate command:
+
+$IF($ARGUMENTS,
+  Parse the command from: "$ARGUMENTS"
+
+  **login** → `python scripts/run.py auth_manager.py setup --service google`
+
+  **status** → Run both:
+  - `python scripts/run.py auth_manager.py status`
+  - `python scripts/run.py notebook_manager.py list`
+
+  **local** → `python scripts/run.py notebook_manager.py list`
+
+  **remote** → `python scripts/run.py nblm_cli.py notebooks`
+
+  **create <name>** → `python scripts/run.py nblm_cli.py create "<name>"`
+
+  **delete [--id ID]** → `python scripts/run.py nblm_cli.py delete <args>`
+
+  **rename <name> [--id ID]** → `python scripts/run.py nblm_cli.py rename "<name>" <args>`
+
+  **summary [--id ID]** → `python scripts/run.py nblm_cli.py summary <args>`
+
+  **describe [--id ID]** → `python scripts/run.py nblm_cli.py describe <args>`
+
+  **add <url>** → Smart add workflow (query notebook first to discover metadata)
+
+  **activate <id>** → `python scripts/run.py notebook_manager.py activate --id "<id>"`
+
+  **sources [--id ID]** → `python scripts/run.py nblm_cli.py sources <args>`
+
+  **upload <file>** → `python scripts/run.py source_manager.py add --file "<file>"`
+
+  **upload-zlib <url>** → `python scripts/run.py source_manager.py add --url "<url>"`
+
+  **upload-url <url>** → `python scripts/run.py nblm_cli.py upload-url "<url>"`
+
+  **upload-youtube <url>** → `python scripts/run.py nblm_cli.py upload-youtube "<url>"`
+
+  **upload-text <title>** → `python scripts/run.py nblm_cli.py upload-text "<title>" <args>`
+
+  **source-text <id>** → `python scripts/run.py nblm_cli.py source-text "<id>"`
+
+  **source-guide <id>** → `python scripts/run.py nblm_cli.py source-guide "<id>"`
+
+  **source-rename <id> <name>** → `python scripts/run.py nblm_cli.py source-rename "<id>" "<name>"`
+
+  **source-refresh <id>** → `python scripts/run.py nblm_cli.py source-refresh "<id>"`
+
+  **source-delete <id>** → `python scripts/run.py nblm_cli.py source-delete "<id>"`
+
+  **ask <question>** → `python scripts/run.py nblm_cli.py ask "<question>"`
+
+  **podcast** → `python scripts/run.py nblm_cli.py podcast <args>`
+
+  If command not recognized, show usage help.,
+
+  Show available commands with `/nblm` (no arguments)
+)
+
+## Podcast Options
+
+```
+/nblm podcast --format DEEP_DIVE --length DEFAULT --wait --output ./podcast.mp4
+```
+
+Formats: `DEEP_DIVE`, `BRIEF`, `CRITIQUE`, `DEBATE`
+Lengths: `SHORT`, `DEFAULT`, `LONG`
+
+---
+
+# Extended Documentation
 
 ## When to Use This Skill
 
