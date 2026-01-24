@@ -1,0 +1,9 @@
+{
+  "name": "notebooklm-skill",
+  "version": "2.1.0",
+  "description": "Query Google NotebookLM for source-grounded, citation-backed answers from your notebooks",
+  "author": {
+    "name": "Troy Huang"
+  },
+  "keywords": ["notebooklm", "research", "citations", "knowledge-base", "ai-assistant"]
+}
