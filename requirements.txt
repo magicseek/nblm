@@ -11,3 +11,6 @@ lxml>=4.9.0
 
 # PDF text extraction fallback
 pypdf>=4.0.0
+
+# NotebookLM API client
+notebooklm-py>=0.1.0
