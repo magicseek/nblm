@@ -316,10 +316,10 @@ class AgentBrowserClient:
             if not local_storage and not session_storage:
                 continue
 
-            # Navigate with wait_until and then explicit wait to ensure page is stable
-            self.navigate(origin, wait_until="domcontentloaded")
-            # Additional wait to ensure execution context is stable
-            self._send_command("wait", {"timeout": 1000})
+            # Navigate and wait for load state, then additional delay for stability
+            self.navigate(origin, wait_until="load")
+            # Additional wait to ensure execution context is fully stable after any JS execution
+            self._send_command("wait", {"timeout": 3000})
             for item in local_storage:
                 key = item.get("name")
                 value = item.get("value")
