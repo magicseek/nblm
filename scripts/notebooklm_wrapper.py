@@ -312,11 +312,17 @@ class NotebookLMWrapper:
     async def chat(self, notebook_id: str, message: str) -> dict:
         """Send a chat message to a notebook and get a response. Falls back to browser on failure."""
         async def _chat():
+            from notebooklm import ChatMode
+
+            # Set mode to DETAILED for comprehensive answers (not quick search)
+            await self._client.chat.set_mode(notebook_id, ChatMode.DETAILED)
+
             # Use client.chat.ask() - chat is a ChatAPI object, not callable
             response = await self._client.chat.ask(notebook_id, message)
             return {
-                "text": response.text,
-                "citations": response.citations if hasattr(response, "citations") else [],
+                "text": response.answer,  # AskResult uses 'answer' not 'text'
+                "citations": response.references if hasattr(response, "references") else [],
+                "conversation_id": response.conversation_id if hasattr(response, "conversation_id") else None,
             }
         try:
             return await self._with_retry(_chat)
