@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-01-24
+
+### Changed
+- **BREAKING**: Replaced notebooklm-kit (TypeScript) with notebooklm-py (Python) for all NotebookLM API operations
+- Migrated source_manager.py and ask_question.py to async
+- API-first approach: queries and uploads use notebooklm-py, browser fallback on failure
+
+### Added
+- `NotebookLMWrapper` class - thin async wrapper over notebooklm-py
+- Token extraction during auth setup (csrf_token, session_id)
+- Silent token refresh on auth errors
+- Browser fallback for file uploads using agent-browser upload command
+- `AGENTS.md` - mirror of CLAUDE.md for all AI agents
+
+### Removed
+- `notebooklm_kit_bridge.mjs` - Node.js bridge no longer needed
+- `notebooklm_kit_client.py` - replaced by notebooklm_wrapper.py
+- `notebooklm-kit` npm dependency
+
 ### Added
 - NotebookLM kit bridge and client for NotebookLM uploads
 - NotebookLM auth token/cookie persistence in `data/auth/google.json`
