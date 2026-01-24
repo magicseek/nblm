@@ -267,3 +267,15 @@ class NotebookLMWrapper:
             await self._client.sources.delete(notebook_id, source_id)
             return True
         return await self._with_retry(_delete)
+
+    # === Chat API ===
+
+    async def chat(self, notebook_id: str, message: str) -> dict:
+        """Send a chat message to a notebook and get a response."""
+        async def _chat():
+            response = await self._client.chat(notebook_id, message)
+            return {
+                "text": response.text,
+                "citations": response.citations if hasattr(response, "citations") else [],
+            }
+        return await self._with_retry(_chat)
