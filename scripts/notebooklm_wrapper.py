@@ -154,14 +154,18 @@ class NotebookLMWrapper:
     # === Notebooks API ===
 
     async def create_notebook(self, name: str) -> dict:
-        """Create a new notebook."""
+        """Create a new notebook. Falls back to browser on failure."""
         async def _create():
             notebook = await self._client.notebooks.create(name)
             return {
                 "id": notebook.id,
                 "title": notebook.title,
             }
-        return await self._with_retry(_create)
+        try:
+            return await self._with_retry(_create)
+        except NotebookLMError:
+            # Fallback to browser creation
+            return await self._fallback_create_notebook(name)
 
     async def list_notebooks(self) -> List[dict]:
         """List all notebooks."""
@@ -281,6 +285,78 @@ class NotebookLMWrapper:
         return await self._with_retry(_chat)
 
     # === Browser Fallback ===
+
+    async def _fallback_create_notebook(self, name: str) -> dict:
+        """Create notebook via browser automation when API fails."""
+        from agent_browser_client import AgentBrowserClient, AgentBrowserError
+        from auth_manager import AuthManager
+
+        loop = asyncio.get_event_loop()
+
+        def _browser_create():
+            auth = AuthManager()
+            client = AgentBrowserClient(session_id=DEFAULT_SESSION_ID)
+
+            try:
+                client.connect()
+                auth.restore_auth("google", client=client)
+
+                # Navigate to NotebookLM home
+                print("   🌐 Creating notebook via browser...")
+                client.navigate("https://notebooklm.google.com")
+
+                import time
+                time.sleep(3)
+
+                # Get snapshot and find create notebook button
+                snapshot = client.snapshot()
+                create_ref = self._find_button_ref(snapshot, ["create", "new notebook", "new"])
+
+                if not create_ref:
+                    raise NotebookLMError(
+                        "Create notebook button not found",
+                        code="ELEMENT_NOT_FOUND",
+                        recovery="Check if NotebookLM page loaded correctly",
+                    )
+
+                client.click(create_ref)
+                time.sleep(2)
+
+                # Get current URL to extract notebook ID
+                snapshot = client.snapshot()
+                # Look for notebook URL pattern in the page or get from navigation
+                # The notebook ID appears in URL after creation
+
+                # Wait for notebook to be created and page to update
+                time.sleep(3)
+
+                # Try to get the notebook ID from the URL
+                current_url = client.evaluate("window.location.href")
+                notebook_id = None
+                if current_url and "notebook/" in current_url:
+                    parts = current_url.split("notebook/")
+                    if len(parts) > 1:
+                        notebook_id = parts[1].split("/")[0].split("?")[0]
+
+                if not notebook_id:
+                    # Generate a placeholder - we'll get the real ID from the URL later
+                    import uuid
+                    notebook_id = str(uuid.uuid4())
+
+                auth.save_auth("google", client=client)
+
+                return {
+                    "id": notebook_id,
+                    "title": name,
+                    "created_via": "browser_fallback",
+                }
+
+            except AgentBrowserError as e:
+                raise NotebookLMError(e.message, code=e.code, recovery=e.recovery)
+            finally:
+                client.disconnect()
+
+        return await loop.run_in_executor(None, _browser_create)
 
     async def _fallback_upload(self, notebook_id: str, file_path: Path) -> dict:
         """Upload file via browser automation when API fails."""
