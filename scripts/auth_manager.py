@@ -268,18 +268,7 @@ class AuthManager:
                         self.save_auth(service, client=client)
                         # Extract NotebookLM tokens for notebooklm-py
                         if service == "google":
-                            try:
-                                tokens = self._extract_notebooklm_tokens_from_page(client)
-                                if tokens.get("csrf_token") and tokens.get("session_id"):
-                                    auth_file = self._auth_file("google")
-                                    payload = json.loads(auth_file.read_text())
-                                    payload["csrf_token"] = tokens["csrf_token"]
-                                    payload["session_id"] = tokens["session_id"]
-                                    payload["extracted_at"] = datetime.now(timezone.utc).isoformat()
-                                    auth_file.write_text(json.dumps(payload))
-                                    print("   ✓ Extracted NotebookLM API tokens")
-                            except Exception as e:
-                                print(f"   ⚠ Could not extract API tokens: {e}")
+                            self._extract_and_save_tokens(client)
                         return True
 
                 print()
@@ -291,18 +280,7 @@ class AuthManager:
             self.save_auth(service, client=client)
             # Extract NotebookLM tokens for notebooklm-py
             if service == "google":
-                try:
-                    tokens = self._extract_notebooklm_tokens_from_page(client)
-                    if tokens.get("csrf_token") and tokens.get("session_id"):
-                        auth_file = self._auth_file("google")
-                        payload = json.loads(auth_file.read_text())
-                        payload["csrf_token"] = tokens["csrf_token"]
-                        payload["session_id"] = tokens["session_id"]
-                        payload["extracted_at"] = datetime.now(timezone.utc).isoformat()
-                        auth_file.write_text(json.dumps(payload))
-                        print("   ✓ Extracted NotebookLM API tokens")
-                except Exception as e:
-                    print(f"   ⚠ Could not extract API tokens: {e}")
+                self._extract_and_save_tokens(client)
             return True
 
         except AgentBrowserError as e:
@@ -546,6 +524,30 @@ class AuthManager:
         if not result:
             return {"csrf_token": None, "session_id": None}
         return result
+
+    def _extract_and_save_tokens(self, client: AgentBrowserClient) -> None:
+        """Navigate to NotebookLM if needed and extract/save tokens."""
+        try:
+            # Check current URL - if not on NotebookLM, navigate there
+            current_url = client.get_current_url() if hasattr(client, 'get_current_url') else ""
+            if "notebooklm.google.com" not in current_url:
+                print("   ⏳ Navigating to NotebookLM to extract API tokens...")
+                client.navigate("https://notebooklm.google.com")
+                time.sleep(3)  # Wait for page to load
+
+            tokens = self._extract_notebooklm_tokens_from_page(client)
+            if tokens.get("csrf_token") and tokens.get("session_id"):
+                auth_file = self._auth_file("google")
+                payload = json.loads(auth_file.read_text())
+                payload["csrf_token"] = tokens["csrf_token"]
+                payload["session_id"] = tokens["session_id"]
+                payload["extracted_at"] = datetime.now(timezone.utc).isoformat()
+                auth_file.write_text(json.dumps(payload))
+                print("   ✓ Extracted NotebookLM API tokens")
+            else:
+                print("   ⚠ Could not extract API tokens (missing csrf_token or session_id)")
+        except Exception as e:
+            print(f"   ⚠ Could not extract API tokens: {e}")
 
     def refresh_notebooklm_tokens(self) -> dict:
         """Silently refresh csrf_token and session_id using stored cookies."""

@@ -299,35 +299,56 @@ class NotebookLMWrapper:
 
                 # Navigate to notebook
                 notebook_url = f"https://notebooklm.google.com/notebook/{notebook_id}"
+                print(f"   🌐 Navigating to notebook for upload...")
                 client.navigate(notebook_url)
 
                 # Wait for page load
                 import time
-                time.sleep(2)
+                time.sleep(3)
 
                 # Get snapshot and find add source button
                 snapshot = client.snapshot()
-                add_ref = self._find_button_ref(snapshot, ["add source", "add sources"])
+                add_ref = self._find_button_ref(snapshot, ["add source", "add sources", "add"])
 
-                if add_ref:
-                    client.click(add_ref)
+                if not add_ref:
+                    raise NotebookLMError(
+                        "Add source button not found",
+                        code="ELEMENT_NOT_FOUND",
+                        recovery="Check if notebook page loaded correctly",
+                    )
+
+                print(f"   📎 Clicking add source button...")
+                client.click(add_ref)
+                time.sleep(2)
+
+                # Get new snapshot and find upload/file option
+                snapshot = client.snapshot()
+                upload_ref = self._find_button_ref(snapshot, ["upload", "file", "pdf", "document"])
+
+                if upload_ref:
+                    client.click(upload_ref)
                     time.sleep(1)
+                    snapshot = client.snapshot()
 
-                # Wait for file input
-                try:
-                    client.wait_for_selector("input[type='file']", timeout_ms=10000, state="attached")
-                except AgentBrowserError:
+                # Find file input ref in snapshot
+                file_input_ref = self._find_file_input_ref(snapshot)
+
+                if not file_input_ref:
                     raise NotebookLMError(
                         "File input not found",
                         code="ELEMENT_NOT_FOUND",
                         recovery="Retry after page loads completely",
                     )
 
-                # Upload file
-                client.upload("input[type='file']", [str(file_path)])
+                # Upload file using agent-browser upload command with ref
+                print(f"   📤 Uploading {file_path.name}...")
+                client.upload(file_input_ref, [str(file_path)])
 
                 # Wait for upload to process
-                time.sleep(5)
+                print(f"   ⏳ Waiting for upload to complete...")
+                time.sleep(10)
+
+                auth.save_auth("google", client=client)
 
                 return {
                     "source_id": None,  # Unknown from browser upload
@@ -341,6 +362,24 @@ class NotebookLMWrapper:
                 client.disconnect()
 
         return await loop.run_in_executor(None, _browser_upload)
+
+    @staticmethod
+    def _find_file_input_ref(snapshot: str) -> Optional[str]:
+        """Find file input ref in snapshot."""
+        for line in snapshot.splitlines():
+            lower = line.lower()
+            # Look for file input or upload-related elements
+            if "file" in lower and ("input" in lower or "upload" in lower):
+                match = re.search(r'\[ref=(\w+)\]', line)
+                if match:
+                    return match.group(1)
+        # Fallback: look for any input that might be file-related
+        for line in snapshot.splitlines():
+            if "input" in line.lower() and "type" not in line.lower():
+                match = re.search(r'\[ref=(\w+)\]', line)
+                if match:
+                    return match.group(1)
+        return None
 
     @staticmethod
     def _find_button_ref(snapshot: str, keywords: List[str]) -> Optional[str]:
