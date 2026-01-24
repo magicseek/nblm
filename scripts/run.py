@@ -169,6 +169,30 @@ def ensure_owner_pid_env():
 
 def main():
     """Main runner"""
+    # Handle --check-deps flag for pre-flight dependency check
+    if len(sys.argv) >= 2 and sys.argv[1] == "--check-deps":
+        print("🔍 Checking dependencies...")
+        skill_dir = Path(__file__).parent.parent
+
+        # Check Python venv
+        venv_python = get_venv_python()
+        if not venv_python.exists():
+            print("📦 Setting up Python environment...")
+            ensure_venv()
+        else:
+            print("✅ Python environment ready")
+
+        # Check Node.js deps
+        node_modules = skill_dir / "node_modules"
+        if not node_modules.exists():
+            print("📦 Installing Node.js dependencies...")
+            ensure_node_deps()
+        else:
+            print("✅ Node.js dependencies ready")
+
+        print("✅ All dependencies installed")
+        sys.exit(0)
+
     if len(sys.argv) < 2:
         print("Usage: python run.py <script_name> [args...]")
         print("\nAvailable scripts:")
