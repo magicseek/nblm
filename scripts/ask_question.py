@@ -5,6 +5,7 @@ Uses agent-browser for token-efficient browser automation
 """
 
 import argparse
+import asyncio
 import json
 import os
 import sys
@@ -19,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from auth_manager import AuthManager
 from notebook_manager import NotebookLibrary
 from agent_browser_client import AgentBrowserClient, AgentBrowserError
-from notebooklm_kit_client import NotebookLMKitClient, NotebookLMKitError
+from notebooklm_wrapper import NotebookLMWrapper, NotebookLMError
 
 
 # Follow-up reminder for comprehensive research
@@ -243,22 +244,8 @@ def _extract_notebook_id_from_url(notebook_url: str) -> Optional[str]:
     return None
 
 
-def _has_api_credentials(auth: AuthManager) -> bool:
-    env_token = os.environ.get("NOTEBOOKLM_AUTH_TOKEN")
-    env_cookies = os.environ.get("NOTEBOOKLM_COOKIES")
-    if env_token and env_cookies:
-        return True
-    auth_file = auth._auth_file("google")
-    if not auth_file.exists():
-        return False
-    try:
-        payload = json.loads(auth_file.read_text())
-    except Exception:
-        return False
-    return bool(payload.get("notebooklm_auth_token") and payload.get("notebooklm_cookies"))
-
-
-def ask_notebooklm_api(question: str, notebook_url: str, auth: AuthManager) -> dict:
+async def ask_notebooklm_api_async(question: str, notebook_url: str) -> dict:
+    """Query NotebookLM via API."""
     notebook_id = _extract_notebook_id_from_url(notebook_url)
     if not notebook_id:
         return {
@@ -270,39 +257,33 @@ def ask_notebooklm_api(question: str, notebook_url: str, auth: AuthManager) -> d
             },
         }
 
-    client = NotebookLMKitClient(auth_provider=auth)
     try:
-        response = client.chat(notebook_id, question)
-    except NotebookLMKitError as exc:
+        async with NotebookLMWrapper() as client:
+            response = await client.chat(notebook_id, question)
+            answer = response.get("text", "")
+            return {
+                "status": "success",
+                "question": question,
+                "answer": answer + FOLLOW_UP_REMINDER,
+                "notebook_url": notebook_url,
+            }
+    except NotebookLMError as e:
         return {
             "status": "error",
             "error": {
-                "code": "API_ERROR",
-                "message": str(exc),
-                "recovery": "Check NOTEBOOKLM_AUTH_TOKEN and NOTEBOOKLM_COOKIES",
+                "code": e.code,
+                "message": e.message,
+                "recovery": e.recovery,
             },
         }
 
-    answer = response.get("text") or ""
-    return {
-        "status": "success",
-        "question": question,
-        "answer": answer + FOLLOW_UP_REMINDER,
-        "notebook_url": notebook_url,
-    }
 
-
-def ask_notebooklm(question: str, notebook_url: str, show_browser: bool = False) -> dict:
-    """
-    Ask a question to NotebookLM
-
-    Returns:
-        dict with status, answer, and optional error
-    """
+async def ask_notebooklm_async(question: str, notebook_url: str, show_browser: bool = False) -> dict:
+    """Ask a question to NotebookLM - API first, browser fallback."""
     auth = AuthManager()
 
-    api_credentials_available = _has_api_credentials(auth)
-    if not auth.is_authenticated("google") and not api_credentials_available:
+    # Check authentication
+    if not auth.is_authenticated("google"):
         return {
             "status": "error",
             "error": {
@@ -315,13 +296,36 @@ def ask_notebooklm(question: str, notebook_url: str, show_browser: bool = False)
     print(f"💬 Asking: {question[:80]}{'...' if len(question) > 80 else ''}")
     print(f"📚 Notebook: {notebook_url[:60]}...")
 
+    # Try API first (unless show_browser is explicitly requested)
+    if not show_browser:
+        print("🔌 Trying API...")
+        result = await ask_notebooklm_api_async(question, notebook_url)
+        if result["status"] == "success":
+            print("✅ Got answer via API!")
+            return result
+        print(f"⚠️ API failed: {result['error']['message']}, falling back to browser...")
+
+    # Fall back to browser (existing browser-based logic)
+    return _ask_via_browser_sync(question, notebook_url, show_browser, auth)
+
+
+def ask_notebooklm(question: str, notebook_url: str, show_browser: bool = False) -> dict:
+    """Sync wrapper for ask_notebooklm_async."""
+    return asyncio.run(ask_notebooklm_async(question, notebook_url, show_browser))
+
+
+def _ask_via_browser_sync(question: str, notebook_url: str, show_browser: bool, auth: AuthManager) -> dict:
+    """
+    Ask a question to NotebookLM via browser automation.
+
+    Returns:
+        dict with status, answer, and optional error
+    """
     client = AgentBrowserClient(session_id="notebooklm", headed=show_browser)
 
     try:
         client.connect()
     except AgentBrowserError as e:
-        if e.code == "DAEMON_UNAVAILABLE" and api_credentials_available:
-            return ask_notebooklm_api(question, notebook_url, auth)
         return {
             "status": "error",
             "error": e.to_dict(),
