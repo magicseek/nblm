@@ -222,6 +222,7 @@ class SourceManager:
 
         self.client.connect()
         try:
+            # Let restore_auth handle navigation - don't navigate here
             self.auth.restore_auth("zlibrary", client=self.client)
             downloader = self.downloader_cls(self.client)
             file_path, file_format = downloader.download(url)

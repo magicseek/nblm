@@ -316,7 +316,10 @@ class AgentBrowserClient:
             if not local_storage and not session_storage:
                 continue
 
-            self.navigate(origin)
+            # Navigate with wait_until and then explicit wait to ensure page is stable
+            self.navigate(origin, wait_until="domcontentloaded")
+            # Additional wait to ensure execution context is stable
+            self._send_command("wait", {"timeout": 1000})
             for item in local_storage:
                 key = item.get("name")
                 value = item.get("value")
@@ -563,6 +566,10 @@ class AgentBrowserClient:
         """Wait for time in seconds"""
         response = self._send_command("wait", {"timeout": timeout * 1000})
         return response
+
+    def wait_for_load(self, state: str = "networkidle") -> Dict[str, Any]:
+        """Wait for page load state (load, domcontentloaded, networkidle)."""
+        return self._send_command("wait", {"load": state})
 
     def wait_for_selector(self, selector: str, timeout_ms: int = 10000, state: str = "attached") -> Dict[str, Any]:
         """Wait for a selector to appear in the DOM."""
