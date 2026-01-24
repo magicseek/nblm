@@ -266,6 +266,20 @@ class AuthManager:
                         print("✅ Authentication successful!")
                         self._save_session_id(client.session_id)
                         self.save_auth(service, client=client)
+                        # Extract NotebookLM tokens for notebooklm-py
+                        if service == "google":
+                            try:
+                                tokens = self._extract_notebooklm_tokens_from_page(client)
+                                if tokens.get("csrf_token") and tokens.get("session_id"):
+                                    auth_file = self._auth_file("google")
+                                    payload = json.loads(auth_file.read_text())
+                                    payload["csrf_token"] = tokens["csrf_token"]
+                                    payload["session_id"] = tokens["session_id"]
+                                    payload["extracted_at"] = datetime.now(timezone.utc).isoformat()
+                                    auth_file.write_text(json.dumps(payload))
+                                    print("   ✓ Extracted NotebookLM API tokens")
+                            except Exception as e:
+                                print(f"   ⚠ Could not extract API tokens: {e}")
                         return True
 
                 print()
@@ -275,6 +289,20 @@ class AuthManager:
             print("✅ Already authenticated!")
             self._save_session_id(client.session_id)
             self.save_auth(service, client=client)
+            # Extract NotebookLM tokens for notebooklm-py
+            if service == "google":
+                try:
+                    tokens = self._extract_notebooklm_tokens_from_page(client)
+                    if tokens.get("csrf_token") and tokens.get("session_id"):
+                        auth_file = self._auth_file("google")
+                        payload = json.loads(auth_file.read_text())
+                        payload["csrf_token"] = tokens["csrf_token"]
+                        payload["session_id"] = tokens["session_id"]
+                        payload["extracted_at"] = datetime.now(timezone.utc).isoformat()
+                        auth_file.write_text(json.dumps(payload))
+                        print("   ✓ Extracted NotebookLM API tokens")
+                except Exception as e:
+                    print(f"   ⚠ Could not extract API tokens: {e}")
             return True
 
         except AgentBrowserError as e:
@@ -490,6 +518,81 @@ class AuthManager:
         if not token or not cookie_header:
             return None
         return token, cookie_header
+
+    def _extract_notebooklm_tokens_from_page(self, client: AgentBrowserClient) -> dict:
+        """Extract csrf_token and session_id from NotebookLM page via JavaScript."""
+        js_code = """
+            (() => {
+                const scripts = document.querySelectorAll('script');
+                let csrf = null, session = null;
+                for (const s of scripts) {
+                    const text = s.textContent || '';
+                    const csrfMatch = text.match(/SNlM0e['"\\s:]+['"]([^'"]+)['"]/);
+                    const sessionMatch = text.match(/FdrFJe['"\\s:]+['"]([^'"]+)['"]/);
+                    if (csrfMatch) csrf = csrfMatch[1];
+                    if (sessionMatch) session = sessionMatch[1];
+                }
+                // Also try WIZ_global_data
+                if (!csrf && window.WIZ_global_data?.SNlM0e) {
+                    csrf = window.WIZ_global_data.SNlM0e;
+                }
+                if (!session && window.WIZ_global_data?.FdrFJe) {
+                    session = window.WIZ_global_data.FdrFJe;
+                }
+                return { csrf_token: csrf, session_id: session };
+            })()
+        """
+        result = client.evaluate(js_code)
+        if not result:
+            return {"csrf_token": None, "session_id": None}
+        return result
+
+    def refresh_notebooklm_tokens(self) -> dict:
+        """Silently refresh csrf_token and session_id using stored cookies."""
+        auth_file = self._auth_file("google")
+        if not auth_file.exists():
+            raise RuntimeError("No Google auth file found")
+
+        try:
+            payload = json.loads(auth_file.read_text())
+        except Exception:
+            raise RuntimeError("Invalid Google auth file")
+
+        client = AgentBrowserClient(session_id=self._load_session_id() or DEFAULT_SESSION_ID)
+
+        try:
+            client.connect()
+
+            # Restore cookies
+            if payload.get("cookies"):
+                client.set_storage_state({"cookies": payload["cookies"]})
+
+            # Navigate to NotebookLM
+            client.navigate("https://notebooklm.google.com")
+            time.sleep(3)
+
+            # Check if still authenticated
+            snapshot = client.snapshot()
+            if client.check_auth(snapshot):
+                raise RuntimeError("Session expired, re-authentication required")
+
+            # Extract fresh tokens
+            tokens = self._extract_notebooklm_tokens_from_page(client)
+
+            if not tokens.get("csrf_token") or not tokens.get("session_id"):
+                raise RuntimeError("Failed to extract NotebookLM tokens from page")
+
+            # Update auth file with new tokens
+            payload["csrf_token"] = tokens["csrf_token"]
+            payload["session_id"] = tokens["session_id"]
+            payload["extracted_at"] = datetime.now(timezone.utc).isoformat()
+
+            auth_file.write_text(json.dumps(payload))
+
+            return tokens
+
+        finally:
+            client.disconnect()
 
     def validate(self, service: str = "google") -> bool:
         """Validate current authentication is still valid"""
