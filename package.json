@@ -1,11 +1,10 @@
 {
   "name": "notebooklm-skill",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "description": "Claude Code skill for NotebookLM integration using agent-browser",
   "dependencies": {
-    "agent-browser": "0.5.0",
-    "notebooklm-kit": "2.2.0"
+    "agent-browser": "0.5.0"
   },
   "scripts": {
     "daemon": "node node_modules/agent-browser/dist/daemon.js",
