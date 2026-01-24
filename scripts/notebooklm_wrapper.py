@@ -279,3 +279,79 @@ class NotebookLMWrapper:
                 "citations": response.citations if hasattr(response, "citations") else [],
             }
         return await self._with_retry(_chat)
+
+    # === Browser Fallback ===
+
+    async def _fallback_upload(self, notebook_id: str, file_path: Path) -> dict:
+        """Upload file via browser automation when API fails."""
+        from agent_browser_client import AgentBrowserClient, AgentBrowserError
+        from auth_manager import AuthManager
+
+        loop = asyncio.get_event_loop()
+
+        def _browser_upload():
+            auth = AuthManager()
+            client = AgentBrowserClient(session_id=DEFAULT_SESSION_ID)
+
+            try:
+                client.connect()
+                auth.restore_auth("google", client=client)
+
+                # Navigate to notebook
+                notebook_url = f"https://notebooklm.google.com/notebook/{notebook_id}"
+                client.navigate(notebook_url)
+
+                # Wait for page load
+                import time
+                time.sleep(2)
+
+                # Get snapshot and find add source button
+                snapshot = client.snapshot()
+                add_ref = self._find_button_ref(snapshot, ["add source", "add sources"])
+
+                if add_ref:
+                    client.click(add_ref)
+                    time.sleep(1)
+
+                # Wait for file input
+                try:
+                    client.wait_for_selector("input[type='file']", timeout_ms=10000, state="attached")
+                except AgentBrowserError:
+                    raise NotebookLMError(
+                        "File input not found",
+                        code="ELEMENT_NOT_FOUND",
+                        recovery="Retry after page loads completely",
+                    )
+
+                # Upload file
+                client.upload("input[type='file']", [str(file_path)])
+
+                # Wait for upload to process
+                time.sleep(5)
+
+                return {
+                    "source_id": None,  # Unknown from browser upload
+                    "title": file_path.name,
+                    "uploaded_via": "browser_fallback",
+                }
+
+            except AgentBrowserError as e:
+                raise NotebookLMError(e.message, code=e.code, recovery=e.recovery)
+            finally:
+                client.disconnect()
+
+        return await loop.run_in_executor(None, _browser_upload)
+
+    @staticmethod
+    def _find_button_ref(snapshot: str, keywords: List[str]) -> Optional[str]:
+        """Find button ref in snapshot matching keywords."""
+        for line in snapshot.splitlines():
+            lower = line.lower()
+            if "button" not in lower:
+                continue
+            if not any(keyword in lower for keyword in keywords):
+                continue
+            match = re.search(r'\[ref=(\w+)\]', line)
+            if match:
+                return match.group(1)
+        return None
