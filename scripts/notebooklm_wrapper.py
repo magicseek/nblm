@@ -11,7 +11,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, Any, List
 
-from notebooklm import NotebookLMClient, AuthTokens
+from notebooklm import NotebookLMClient
 
 from config import (
     GOOGLE_AUTH_FILE,
@@ -51,9 +51,8 @@ class NotebookLMWrapper:
 
     async def __aenter__(self) -> "NotebookLMWrapper":
         """Load auth and initialize notebooklm-py client."""
-        self._auth_data = self._load_auth_file()
-        auth_tokens = self._create_auth_tokens(self._auth_data)
-        self._client = NotebookLMClient(auth_tokens)
+        # Use from_storage() which handles token extraction internally
+        self._client = await NotebookLMClient.from_storage(str(self.auth_file))
         await self._client.__aenter__()
         return self
 
@@ -74,29 +73,6 @@ class NotebookLMWrapper:
             return json.loads(self.auth_file.read_text())
         except json.JSONDecodeError as e:
             raise NotebookLMAuthError(f"Invalid auth file: {e}")
-
-    def _create_auth_tokens(self, auth_data: dict) -> AuthTokens:
-        """Create AuthTokens from stored auth data."""
-        cookies = auth_data.get("cookies", [])
-        csrf_token = auth_data.get("csrf_token")
-        session_id = auth_data.get("session_id")
-
-        if not cookies:
-            raise NotebookLMAuthError("No cookies in auth file")
-        if not csrf_token or not session_id:
-            raise NotebookLMAuthError(
-                "Missing csrf_token or session_id in auth file",
-                recovery="Run: python scripts/run.py auth_manager.py reauth",
-            )
-
-        # Convert cookies list to dict format expected by notebooklm-py
-        cookies_dict = {c["name"]: c["value"] for c in cookies if "name" in c and "value" in c}
-
-        return AuthTokens(
-            cookies=cookies_dict,
-            csrf_token=csrf_token,
-            session_id=session_id,
-        )
 
     def _is_token_stale(self) -> bool:
         """Check if tokens are older than staleness threshold."""
@@ -141,14 +117,10 @@ class NotebookLMWrapper:
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, auth_manager.refresh_notebooklm_tokens)
 
-        # Reload auth data
-        self._auth_data = self._load_auth_file()
-
-        # Recreate client with fresh tokens
+        # Recreate client with fresh tokens using from_storage
         if self._client:
             await self._client.__aexit__(None, None, None)
-        auth_tokens = self._create_auth_tokens(self._auth_data)
-        self._client = NotebookLMClient(auth_tokens)
+        self._client = await NotebookLMClient.from_storage(str(self.auth_file))
         await self._client.__aenter__()
 
     # === Notebooks API ===
