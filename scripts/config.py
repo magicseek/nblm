@@ -31,6 +31,9 @@ AGENT_BROWSER_WATCHDOG_INTERVAL_SECONDS = int(
     os.environ.get("AGENT_BROWSER_WATCHDOG_INTERVAL_SECONDS", "30")
 )
 
+# NotebookLM token staleness threshold
+NOTEBOOKLM_TOKEN_STALENESS_DAYS = 7
+
 # NotebookLM Selectors
 QUERY_INPUT_SELECTORS = [
     "textarea.query-box-input",  # Primary
