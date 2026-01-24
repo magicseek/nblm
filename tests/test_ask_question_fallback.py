@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from unittest import mock
 import sys
@@ -10,40 +11,58 @@ sys.path.insert(0, str(repo_root))
 import scripts.ask_question as ask_question
 
 
-class DummyBrowser:
-    def connect(self):
-        raise ask_question.AgentBrowserError(
-            code="DAEMON_UNAVAILABLE",
-            message="Daemon failed to start within timeout",
-            recovery="Check Node.js installation"
-        )
+class DummyWrapper:
+    """Mock NotebookLMWrapper that returns a successful chat response."""
 
-    def disconnect(self):
-        return None
+    async def __aenter__(self):
+        return self
 
+    async def __aexit__(self, *args):
+        pass
 
-class DummyKitClient:
-    def chat(self, notebook_id: str, prompt: str) -> dict:
-        return {"text": "api answer"}
+    async def chat(self, notebook_id: str, message: str) -> dict:
+        return {"text": "api answer", "citations": []}
 
 
 class AskQuestionFallbackTests(unittest.TestCase):
-    def test_fallback_to_api_when_daemon_unavailable(self):
-        with mock.patch.object(ask_question, "AgentBrowserClient", return_value=DummyBrowser()), \
-            mock.patch.object(ask_question.AuthManager, "is_authenticated", return_value=False), \
-            mock.patch.object(ask_question, "NotebookLMKitClient", return_value=DummyKitClient()), \
-            mock.patch.dict(
-                ask_question.os.environ,
-                {"NOTEBOOKLM_AUTH_TOKEN": "env-token", "NOTEBOOKLM_COOKIES": "SID=env"},
-                clear=False,
-            ):
-            result = ask_question.ask_notebooklm(
-                "What is this?",
-                "https://notebooklm.google.com/notebook/abc123"
+    def test_api_first_success(self):
+        """Test that API is tried first and succeeds without browser fallback."""
+
+        async def mock_wrapper_context(*args, **kwargs):
+            return DummyWrapper()
+
+        with mock.patch.object(ask_question, "NotebookLMWrapper") as mock_wrapper_cls:
+            # Make NotebookLMWrapper return our dummy
+            mock_wrapper_cls.return_value = DummyWrapper()
+
+            result = asyncio.run(
+                ask_question.ask_notebooklm_api_async(
+                    "What is this?",
+                    "https://notebooklm.google.com/notebook/abc123"
+                )
             )
 
         self.assertEqual(result["status"], "success")
         self.assertIn("api answer", result["answer"])
+
+    def test_api_extracts_notebook_id_from_url(self):
+        """Test that notebook ID is correctly extracted from URL."""
+        notebook_id = ask_question._extract_notebook_id_from_url(
+            "https://notebooklm.google.com/notebook/abc123"
+        )
+        self.assertEqual(notebook_id, "abc123")
+
+    def test_api_returns_error_for_invalid_url(self):
+        """Test that invalid URL returns error without notebook ID."""
+        result = asyncio.run(
+            ask_question.ask_notebooklm_api_async(
+                "What is this?",
+                "https://example.com/invalid"
+            )
+        )
+
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["error"]["code"], "NOTEBOOK_ID_MISSING")
 
 
 if __name__ == "__main__":
