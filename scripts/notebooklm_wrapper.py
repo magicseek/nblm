@@ -310,14 +310,19 @@ class NotebookLMWrapper:
     # === Chat API ===
 
     async def chat(self, notebook_id: str, message: str) -> dict:
-        """Send a chat message to a notebook and get a response."""
+        """Send a chat message to a notebook and get a response. Falls back to browser on failure."""
         async def _chat():
-            response = await self._client.chat(notebook_id, message)
+            # Use client.chat.ask() - chat is a ChatAPI object, not callable
+            response = await self._client.chat.ask(notebook_id, message)
             return {
                 "text": response.text,
                 "citations": response.citations if hasattr(response, "citations") else [],
             }
-        return await self._with_retry(_chat)
+        try:
+            return await self._with_retry(_chat)
+        except NotebookLMError:
+            # Fallback to browser-based chat
+            return await self._fallback_chat(notebook_id, message)
 
     # === Audio/Podcast API ===
 
@@ -549,6 +554,130 @@ class NotebookLMWrapper:
                 client.disconnect()
 
         return await loop.run_in_executor(None, _browser_upload)
+
+    async def _fallback_chat(self, notebook_id: str, message: str) -> dict:
+        """Chat via browser automation when API fails."""
+        from agent_browser_client import AgentBrowserClient, AgentBrowserError
+        from auth_manager import AuthManager
+
+        loop = asyncio.get_event_loop()
+
+        def _browser_chat():
+            auth = AuthManager()
+            client = AgentBrowserClient(session_id=DEFAULT_SESSION_ID)
+
+            try:
+                client.connect()
+                auth.restore_auth("google", client=client)
+
+                # Navigate to notebook
+                notebook_url = f"https://notebooklm.google.com/notebook/{notebook_id}"
+                print(f"   🌐 Navigating to notebook...")
+                client.navigate(notebook_url)
+
+                import time
+                time.sleep(3)
+
+                # Get snapshot and find query input
+                print("   ⏳ Finding query input...")
+                snapshot = client.snapshot()
+                input_ref = self._find_textbox_ref(snapshot)
+
+                if not input_ref:
+                    raise NotebookLMError(
+                        "Query input not found",
+                        code="ELEMENT_NOT_FOUND",
+                        recovery="Check if notebook page loaded correctly",
+                    )
+
+                # Type the question
+                print("   ⌨️ Typing question...")
+                client.fill(input_ref, message)
+                time.sleep(0.5)
+
+                # Press Enter to submit
+                client.press_key("Enter")
+
+                # Wait for response
+                print("   ⏳ Waiting for answer...")
+                time.sleep(10)  # Initial wait
+
+                # Poll for response (up to 60 seconds)
+                answer = None
+                for _ in range(12):  # 12 * 5 = 60 seconds max
+                    snapshot = client.snapshot()
+                    answer = self._extract_chat_response(snapshot)
+                    if answer and len(answer) > 50:  # Got substantial response
+                        break
+                    time.sleep(5)
+
+                if not answer:
+                    raise NotebookLMError(
+                        "No response received",
+                        code="TIMEOUT",
+                        recovery="Try again or check if notebook has sources",
+                    )
+
+                print("   ✅ Got answer!")
+                auth.save_auth("google", client=client)
+
+                return {
+                    "text": answer,
+                    "citations": [],
+                    "via": "browser_fallback",
+                }
+
+            except AgentBrowserError as e:
+                raise NotebookLMError(e.message, code=e.code, recovery=e.recovery)
+            finally:
+                client.disconnect()
+
+        return await loop.run_in_executor(None, _browser_chat)
+
+    @staticmethod
+    def _find_textbox_ref(snapshot: str) -> Optional[str]:
+        """Find textbox/input ref for chat in snapshot."""
+        for line in snapshot.splitlines():
+            lower = line.lower()
+            # Look for textbox or input elements related to chat
+            if ("textbox" in lower or "textarea" in lower) and ("ask" in lower or "query" in lower or "question" in lower or "chat" in lower):
+                match = re.search(r'\[ref=(\w+)\]', line)
+                if match:
+                    return match.group(1)
+        # Fallback: look for any textbox
+        for line in snapshot.splitlines():
+            if "textbox" in line.lower():
+                match = re.search(r'\[ref=(\w+)\]', line)
+                if match:
+                    return match.group(1)
+        return None
+
+    @staticmethod
+    def _extract_chat_response(snapshot: str) -> Optional[str]:
+        """Extract the latest chat response from snapshot."""
+        lines = snapshot.splitlines()
+        # Look for response content - typically in a section after the input
+        response_lines = []
+        in_response = False
+
+        for line in lines:
+            lower = line.lower()
+            # Skip input areas
+            if "textbox" in lower or "button" in lower:
+                if in_response and response_lines:
+                    break  # End of response section
+                continue
+            # Look for text content
+            if line.strip() and not line.startswith('[') and len(line.strip()) > 20:
+                # Clean up the line (remove refs if any)
+                clean_line = re.sub(r'\[ref=\w+\]', '', line).strip()
+                if clean_line:
+                    response_lines.append(clean_line)
+                    in_response = True
+
+        if response_lines:
+            return '\n'.join(response_lines)
+        return None
 
     @staticmethod
     def _find_file_input_ref(snapshot: str) -> Optional[str]:
