@@ -182,3 +182,88 @@ class NotebookLMWrapper:
             await self._client.notebooks.delete(notebook_id)
             return True
         return await self._with_retry(_delete)
+
+    # === Sources API ===
+
+    async def add_file(self, notebook_id: str, file_path: Path) -> dict:
+        """Upload a file to a notebook. Falls back to browser on failure."""
+        async def _add():
+            source = await self._client.sources.add_file(notebook_id, file_path)
+            return {
+                "source_id": source.id,
+                "title": source.title,
+                "source_type": source.source_type,
+            }
+
+        try:
+            return await self._with_retry(_add)
+        except NotebookLMError:
+            # Fallback to browser upload
+            return await self._fallback_upload(notebook_id, file_path)
+
+    async def add_url(self, notebook_id: str, url: str) -> dict:
+        """Add a URL source to a notebook."""
+        async def _add():
+            source = await self._client.sources.add_url(notebook_id, url)
+            return {
+                "source_id": source.id,
+                "title": source.title,
+                "source_type": source.source_type,
+            }
+        return await self._with_retry(_add)
+
+    async def add_youtube(self, notebook_id: str, url: str) -> dict:
+        """Add a YouTube video source to a notebook."""
+        async def _add():
+            source = await self._client.sources.add_youtube(notebook_id, url)
+            return {
+                "source_id": source.id,
+                "title": source.title,
+                "source_type": source.source_type,
+            }
+        return await self._with_retry(_add)
+
+    async def add_text(self, notebook_id: str, title: str, content: str) -> dict:
+        """Add text content as a source to a notebook."""
+        async def _add():
+            source = await self._client.sources.add_text(notebook_id, title, content)
+            return {
+                "source_id": source.id,
+                "title": source.title,
+                "source_type": source.source_type,
+            }
+        return await self._with_retry(_add)
+
+    async def list_sources(self, notebook_id: str) -> List[dict]:
+        """List all sources in a notebook."""
+        async def _list():
+            sources = await self._client.sources.list(notebook_id)
+            return [
+                {
+                    "source_id": src.id,
+                    "title": src.title,
+                    "source_type": src.source_type,
+                    "is_ready": src.is_ready,
+                }
+                for src in sources
+            ]
+        return await self._with_retry(_list)
+
+    async def get_source(self, notebook_id: str, source_id: str) -> dict:
+        """Get details of a specific source."""
+        async def _get():
+            source = await self._client.sources.get(notebook_id, source_id)
+            return {
+                "source_id": source.id,
+                "title": source.title,
+                "source_type": source.source_type,
+                "is_ready": source.is_ready,
+            }
+        return await self._with_retry(_get)
+
+    async def delete_source(self, notebook_id: str, source_id: str) -> bool:
+        """Delete a source from a notebook."""
+        async def _delete():
+            await self._client.sources.delete(notebook_id, source_id)
+            return True
+        return await self._with_retry(_delete)
