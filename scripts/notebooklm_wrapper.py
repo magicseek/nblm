@@ -159,6 +159,32 @@ class NotebookLMWrapper:
             return True
         return await self._with_retry(_delete)
 
+    async def rename_notebook(self, notebook_id: str, new_title: str) -> dict:
+        """Rename a notebook."""
+        async def _rename():
+            notebook = await self._client.notebooks.rename(notebook_id, new_title)
+            return {
+                "id": notebook.id,
+                "title": notebook.title,
+            }
+        return await self._with_retry(_rename)
+
+    async def get_notebook_summary(self, notebook_id: str) -> str:
+        """Get AI-generated summary for a notebook."""
+        async def _summary():
+            return await self._client.notebooks.summary(notebook_id)
+        return await self._with_retry(_summary)
+
+    async def get_notebook_description(self, notebook_id: str) -> dict:
+        """Get AI-generated description and suggested topics."""
+        async def _description():
+            desc = await self._client.notebooks.description(notebook_id)
+            return {
+                "summary": desc.summary,
+                "suggested_topics": [t.question for t in desc.suggested_topics] if hasattr(desc, 'suggested_topics') else [],
+            }
+        return await self._with_retry(_description)
+
     # === Sources API ===
 
     async def add_file(self, notebook_id: str, file_path: Path) -> dict:
@@ -244,6 +270,43 @@ class NotebookLMWrapper:
             return True
         return await self._with_retry(_delete)
 
+    async def rename_source(self, notebook_id: str, source_id: str, new_title: str) -> dict:
+        """Rename a source."""
+        async def _rename():
+            source = await self._client.sources.rename(notebook_id, source_id, new_title)
+            return {
+                "source_id": source.id,
+                "title": source.title,
+            }
+        return await self._with_retry(_rename)
+
+    async def refresh_source(self, notebook_id: str, source_id: str) -> dict:
+        """Refresh a URL source to re-fetch content."""
+        async def _refresh():
+            source = await self._client.sources.refresh(notebook_id, source_id)
+            return {
+                "source_id": source.id,
+                "title": source.title,
+            }
+        return await self._with_retry(_refresh)
+
+    async def get_source_fulltext(self, notebook_id: str, source_id: str) -> dict:
+        """Get full indexed text content of a source."""
+        async def _fulltext():
+            fulltext = await self._client.sources.get_fulltext(notebook_id, source_id)
+            return {
+                "char_count": fulltext.char_count,
+                "content": fulltext.content,
+            }
+        return await self._with_retry(_fulltext)
+
+    async def get_source_guide(self, notebook_id: str, source_id: str) -> dict:
+        """Get AI-generated summary and keywords for a source."""
+        async def _guide():
+            guide = await self._client.sources.get_guide(notebook_id, source_id)
+            return guide
+        return await self._with_retry(_guide)
+
     # === Chat API ===
 
     async def chat(self, notebook_id: str, message: str) -> dict:
@@ -255,6 +318,82 @@ class NotebookLMWrapper:
                 "citations": response.citations if hasattr(response, "citations") else [],
             }
         return await self._with_retry(_chat)
+
+    # === Audio/Podcast API ===
+
+    async def generate_audio(
+        self,
+        notebook_id: str,
+        instructions: str = "",
+        audio_format: str = "DEEP_DIVE",
+        audio_length: str = "DEFAULT",
+    ) -> dict:
+        """Generate audio podcast from notebook content."""
+        async def _generate():
+            from notebooklm import AudioFormat, AudioLength
+
+            format_map = {
+                "DEEP_DIVE": AudioFormat.DEEP_DIVE,
+                "BRIEF": AudioFormat.BRIEF,
+                "CRITIQUE": AudioFormat.CRITIQUE,
+                "DEBATE": AudioFormat.DEBATE,
+            }
+            length_map = {
+                "SHORT": AudioLength.SHORT,
+                "DEFAULT": AudioLength.DEFAULT,
+                "LONG": AudioLength.LONG,
+            }
+
+            status = await self._client.artifacts.generate_audio(
+                notebook_id,
+                audio_format=format_map.get(audio_format.upper(), AudioFormat.DEEP_DIVE),
+                audio_length=length_map.get(audio_length.upper(), AudioLength.DEFAULT),
+                instructions=instructions or None,
+            )
+            return {
+                "task_id": status.task_id,
+                "status": "started",
+            }
+        return await self._with_retry(_generate)
+
+    async def wait_for_audio(
+        self,
+        notebook_id: str,
+        task_id: str,
+        timeout: int = 600,
+        poll_interval: int = 10,
+    ) -> dict:
+        """Wait for audio generation to complete."""
+        async def _wait():
+            final = await self._client.artifacts.wait_for_completion(
+                notebook_id,
+                task_id,
+                timeout=timeout,
+                poll_interval=poll_interval,
+            )
+            return {
+                "is_complete": final.is_complete,
+                "is_failed": getattr(final, 'is_failed', False),
+                "url": getattr(final, 'url', None),
+                "error": getattr(final, 'error', None),
+            }
+        return await self._with_retry(_wait)
+
+    async def download_audio(
+        self,
+        notebook_id: str,
+        output_path: str,
+        artifact_id: str = None,
+    ) -> str:
+        """Download generated audio file."""
+        async def _download():
+            path = await self._client.artifacts.download_audio(
+                notebook_id,
+                output_path,
+                artifact_id=artifact_id,
+            )
+            return str(path)
+        return await self._with_retry(_download)
 
     # === Browser Fallback ===
 
