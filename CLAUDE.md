@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⚠️ IRON RULE - NotebookLM Usage
+
+**When working in this repository and needing to reference or query NotebookLM, you MUST use the skill provided by this repo itself.** Do not use external NotebookLM tools or services - always use the scripts and tooling defined here.
+
+This is a non-negotiable project law.
+
 ## Project Overview
 
 NotebookLM Claude Code Skill - enables Claude Code to query Google NotebookLM for source-grounded, citation-backed answers. Uses the agent-browser daemon (Node.js) and a Unix socket protocol for automation.
@@ -93,15 +99,43 @@ references/               # Extended documentation
 └── usage_patterns.md
 ```
 
-**Key Flow:** `run.py` → ensures Python/Node deps → `ask_question.py` → `agent_browser_client.py` → agent-browser daemon
+**Key Flow:** `run.py` → ensures Python/Node deps → scripts use `NotebookLMWrapper` (async) → notebooklm-py API → agent-browser fallback
 
 ## Key Dependencies
 
+### Foundation Libraries (Project Decision)
+
+This skill uses **two foundation libraries** for NotebookLM integration:
+
+1. **agent-browser** (npm - vercel-labs/agent-browser)
+   - Headless browser automation CLI for AI agents
+   - Used for: Authentication, token refresh, browser fallback for uploads, Z-Library automation
+   - Key commands: `snapshot`, `click`, `fill`, `upload`, `navigate`, `evaluate`
+
+2. **notebooklm-py** (pip - teng-lin/notebooklm-py)
+   - Python async API client for Google NotebookLM
+   - Used for: All NotebookLM API operations (notebooks, sources, chat)
+   - Key APIs:
+     - `client.notebooks.create(name)` - Create notebooks
+     - `client.notebooks.list()` - List notebooks
+     - `client.sources.add_file(notebook_id, Path(...))` - Upload files
+     - `client.sources.add_url(notebook_id, url)` - Add URL sources
+     - `client.sources.add_youtube(notebook_id, url)` - Add YouTube
+     - `client.sources.add_text(notebook_id, title, content)` - Add text
+     - `client.sources.list(notebook_id)` - List sources
+     - `client.chat(notebook_id, message)` - Query notebook
+
+**Architecture:**
+- API-first: All NotebookLM operations go through notebooklm-py
+- Browser fallback: File uploads fall back to agent-browser on API failure
+- Auth extraction: agent-browser extracts csrf_token/session_id for notebooklm-py
+- Token refresh: Silent refresh on auth errors before retry
+
+### Other Dependencies
+
 - **python-dotenv==1.0.0**: Environment configuration
 - **ebooklib / beautifulsoup4 / lxml**: EPUB conversion
-- **agent-browser** (npm): Browser automation daemon
-- **notebooklm-kit** (npm): NotebookLM API client
-- **Node.js**: Required to run the daemon
+- **Node.js**: Required to run the agent-browser daemon
 
 ## Testing
 
