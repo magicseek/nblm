@@ -77,11 +77,21 @@ python scripts/run.py auth_manager.py status --service google
 | `source-refresh <source-id>` | Re-fetch URL content |
 | `source-delete <source-id>` | Delete a source |
 
-### Chat & Audio
+### Chat & Audio/Media
 | Command | Description |
 |---------|-------------|
 | `ask <question>` | Query NotebookLM |
 | `podcast [--instructions TEXT]` | Generate audio podcast |
+| `podcast-status <task-id>` | Check podcast generation status |
+| `podcast-download [output-path]` | Download latest podcast |
+| `briefing [--instructions TEXT]` | Generate brief audio summary |
+| `debate [--instructions TEXT]` | Generate debate-style audio |
+| `slides [--instructions TEXT]` | Generate slide deck |
+| `slides-download [output-path]` | Download slide deck as PDF |
+| `infographic [--instructions TEXT]` | Generate infographic |
+| `infographic-download [output-path]` | Download infographic |
+| `media-list [--type TYPE]` | List generated media (audio/video/slides/infographic) |
+| `media-delete <id>` | Delete a generated media item |
 
 ## Command Routing
 
@@ -138,7 +148,27 @@ $IF($ARGUMENTS,
 
   **ask <question>** → `python scripts/run.py nblm_cli.py ask "<question>"`
 
-  **podcast** → `python scripts/run.py nblm_cli.py podcast <args>`
+  **podcast** → `python scripts/run.py artifact_manager.py generate --format DEEP_DIVE <args>`
+
+  **podcast-status <task-id>** → `python scripts/run.py artifact_manager.py status --task-id "<task-id>"`
+
+  **podcast-download [output-path]** → `python scripts/run.py artifact_manager.py download "<output-path>"`
+
+  **briefing** → `python scripts/run.py artifact_manager.py generate --format BRIEF <args>`
+
+  **debate** → `python scripts/run.py artifact_manager.py generate --format DEBATE <args>`
+
+  **slides** → `python scripts/run.py artifact_manager.py generate --format SLIDES <args>`
+
+  **slides-download [output-path]** → `python scripts/run.py artifact_manager.py download "<output-path>" --type slide-deck`
+
+  **infographic** → `python scripts/run.py artifact_manager.py generate --format INFOGRAPHIC <args>`
+
+  **infographic-download [output-path]** → `python scripts/run.py artifact_manager.py download "<output-path>" --type infographic`
+
+  **media-list [--type TYPE]** → `python scripts/run.py artifact_manager.py list <args>`
+
+  **media-delete <id>** → `python scripts/run.py artifact_manager.py delete "<id>"`
 
   If command not recognized, show usage help.,
 
@@ -148,11 +178,47 @@ $IF($ARGUMENTS,
 ## Podcast Options
 
 ```
-/nblm podcast --format DEEP_DIVE --length DEFAULT --wait --output ./podcast.mp4
+/nblm podcast --length DEFAULT --wait --output ./podcast.mp3
+/nblm podcast --instructions "Focus on the key findings"
+/nblm briefing --wait --output ./summary.mp3
+/nblm debate --instructions "Compare the two approaches"
 ```
 
-Formats: `DEEP_DIVE`, `BRIEF`, `CRITIQUE`, `DEBATE`
-Lengths: `SHORT`, `DEFAULT`, `LONG`
+| Option | Values |
+|--------|--------|
+| `--length` | `SHORT`, `DEFAULT`, `LONG` |
+| `--instructions` | Custom instructions for the content |
+| `--wait` | Wait for generation to complete |
+| `--output` | Download path (requires `--wait`) |
+
+## Media Generation
+
+| Command | Description | Output |
+|---------|-------------|--------|
+| `/nblm podcast` | Deep-dive audio discussion | MP3 |
+| `/nblm briefing` | Brief audio summary | MP3 |
+| `/nblm debate` | Debate-style audio | MP3 |
+| `/nblm slides` | Slide deck presentation | PDF |
+| `/nblm infographic` | Visual infographic | PNG |
+
+### Examples
+```
+/nblm podcast --wait --output ./deep-dive.mp3
+/nblm briefing --instructions "Focus on chapter 3" --wait
+/nblm debate --length LONG --wait --output ./debate.mp3
+/nblm slides --instructions "Include key diagrams" --wait --output ./presentation.pdf
+/nblm infographic --wait --output ./summary.png
+```
+
+### Download & Manage
+```
+/nblm podcast-download ./my-podcast.mp3
+/nblm slides-download ./presentation.pdf
+/nblm infographic-download ./visual.png
+/nblm media-list                     # List all generated media
+/nblm media-list --type audio        # List only audio
+/nblm media-delete <id>              # Delete a media item
+```
 
 ---
 
