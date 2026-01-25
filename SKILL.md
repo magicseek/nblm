@@ -20,10 +20,10 @@ python scripts/run.py --check-deps
 If the above fails with "command not found" or missing dependencies:
 ```bash
 # Install Python dependencies
-cd /path/to/notebooklm-skill && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+cd /path/to/nblm && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
 
 # Install Node.js dependencies (required for browser automation)
-cd /path/to/notebooklm-skill && npm install
+cd /path/to/nblm && npm install
 ```
 
 ### Step 2: Check Google Authentication
