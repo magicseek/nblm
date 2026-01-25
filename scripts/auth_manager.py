@@ -201,6 +201,35 @@ class AuthManager:
         with open(AGENT_BROWSER_SESSION_FILE, 'w') as f:
             f.write(session_id)
 
+    def _ensure_storage_state_symlink(self):
+        """Create symlink from storage_state.json -> google.json for notebooklm-py compatibility.
+
+        The notebooklm-py library's download methods use Playwright internally and look for
+        storage at NOTEBOOKLM_HOME/storage_state.json. This symlink ensures the library
+        uses our google.json auth data.
+        """
+        storage_state_path = AUTH_DIR / "storage_state.json"
+        google_auth_path = GOOGLE_AUTH_FILE
+
+        # Only create symlink if google.json exists
+        if not google_auth_path.exists():
+            return
+
+        # Remove existing symlink or file if it exists
+        if storage_state_path.exists() or storage_state_path.is_symlink():
+            storage_state_path.unlink()
+
+        # Create relative symlink (google.json is in same directory)
+        try:
+            storage_state_path.symlink_to(google_auth_path.name)
+            print("   ✓ Created storage_state.json symlink for notebooklm-py")
+        except OSError as e:
+            # On Windows, symlinks may require admin privileges
+            # Fall back to copying the file
+            import shutil
+            shutil.copy2(google_auth_path, storage_state_path)
+            print("   ✓ Created storage_state.json copy for notebooklm-py")
+
     def _load_session_id(self) -> str:
         """Load saved session ID"""
         if AGENT_BROWSER_SESSION_FILE.exists():
@@ -266,9 +295,10 @@ class AuthManager:
                         print("✅ Authentication successful!")
                         self._save_session_id(client.session_id)
                         self.save_auth(service, client=client)
-                        # Extract NotebookLM tokens for notebooklm-py
+                        # Extract NotebookLM tokens and create symlink for notebooklm-py
                         if service == "google":
                             self._extract_and_save_tokens(client)
+                            self._ensure_storage_state_symlink()
                         return True
 
                 print()
@@ -278,9 +308,10 @@ class AuthManager:
             print("✅ Already authenticated!")
             self._save_session_id(client.session_id)
             self.save_auth(service, client=client)
-            # Extract NotebookLM tokens for notebooklm-py
+            # Extract NotebookLM tokens and create symlink for notebooklm-py
             if service == "google":
                 self._extract_and_save_tokens(client)
+                self._ensure_storage_state_symlink()
             return True
 
         except AgentBrowserError as e:
