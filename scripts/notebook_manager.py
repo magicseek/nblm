@@ -313,7 +313,8 @@ def main():
 
     # Add command
     add_parser = subparsers.add_parser('add', help='Add a notebook')
-    add_parser.add_argument('--url', required=True, help='NotebookLM URL')
+    add_parser.add_argument('--url', help='NotebookLM URL (e.g., https://notebooklm.google.com/notebook/...)')
+    add_parser.add_argument('--notebook-id', help='NotebookLM notebook ID (the ID portion from the URL)')
     add_parser.add_argument('--name', required=True, help='Display name')
     add_parser.add_argument('--description', required=True, help='Description')
     add_parser.add_argument('--topics', required=True, help='Comma-separated topics')
@@ -345,12 +346,22 @@ def main():
 
     # Execute command
     if args.command == 'add':
+        # Determine URL from --url or --notebook-id
+        if args.url:
+            url = args.url
+        elif args.notebook_id:
+            # Convert notebook ID to full URL
+            url = f"https://notebooklm.google.com/notebook/{args.notebook_id}"
+        else:
+            print("❌ Error: Either --url or --notebook-id is required")
+            return
+
         topics = [t.strip() for t in args.topics.split(',')]
         use_cases = [u.strip() for u in args.use_cases.split(',')] if args.use_cases else None
         tags = [t.strip() for t in args.tags.split(',')] if args.tags else None
 
         notebook = library.add_notebook(
-            url=args.url,
+            url=url,
             name=args.name,
             description=args.description,
             topics=topics,

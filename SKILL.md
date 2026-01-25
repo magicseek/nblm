@@ -59,7 +59,7 @@ python scripts/run.py auth_manager.py status --service google
 | `rename <name> [--id ID]` | Rename a notebook |
 | `summary [--id ID]` | Get AI-generated summary |
 | `describe [--id ID]` | Get description and suggested topics |
-| `add <url>` | Add notebook to local library |
+| `add <url-or-id>` | Add notebook to local library (supports URL or notebook ID) |
 | `activate <id>` | Set active notebook |
 
 ### Source Management
@@ -120,7 +120,7 @@ $IF($ARGUMENTS,
 
   **describe [--id ID]** → `python scripts/run.py nblm_cli.py describe <args>`
 
-  **add <url>** → Smart add workflow (query notebook first to discover metadata)
+  **add <url-or-id>** → Smart add workflow (supports both URL and notebook ID)
 
   **activate <id>** → `python scripts/run.py notebook_manager.py activate --id "<id>"`
 
@@ -395,6 +395,8 @@ python scripts/run.py auth_manager.py clear --service zlibrary # Clear auth
 ### Notebook Management (`notebook_manager.py`)
 ```bash
 python scripts/run.py notebook_manager.py add --url URL --name NAME --description DESC --topics TOPICS
+# OR use notebook ID directly:
+python scripts/run.py notebook_manager.py add --notebook-id ID --name NAME --description DESC --topics TOPICS
 python scripts/run.py notebook_manager.py list
 python scripts/run.py notebook_manager.py search --query QUERY
 python scripts/run.py notebook_manager.py activate --id ID

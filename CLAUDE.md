@@ -51,6 +51,7 @@ python scripts/run.py auth_manager.py clear --service zlibrary  # Clear auth dat
 # Notebook Library
 python scripts/run.py notebook_manager.py list
 python scripts/run.py notebook_manager.py add --url URL --name NAME --description DESC --topics TOPICS
+python scripts/run.py notebook_manager.py add --notebook-id ID --name NAME --description DESC --topics TOPICS
 python scripts/run.py notebook_manager.py search --query KEYWORD
 python scripts/run.py notebook_manager.py activate --id ID
 python scripts/run.py notebook_manager.py remove --id ID
