@@ -458,6 +458,120 @@ class NotebookLMWrapper:
             return True
         return await self._with_retry(_delete)
 
+    # === Slide Deck / Infographic API ===
+
+    async def generate_slide_deck(
+        self,
+        notebook_id: str,
+        instructions: str = "",
+        slide_format: str = "DETAILED_DECK",
+        slide_length: str = "DEFAULT",
+    ) -> dict:
+        """Generate slide deck from notebook content.
+
+        Args:
+            notebook_id: The notebook ID
+            instructions: Custom instructions for the slide deck
+            slide_format: DETAILED_DECK or PRESENTER_SLIDES
+            slide_length: SHORT or DEFAULT
+        """
+        async def _generate():
+            from notebooklm.rpc.types import SlideDeckFormat, SlideDeckLength
+
+            format_map = {
+                "DETAILED_DECK": SlideDeckFormat.DETAILED_DECK,
+                "PRESENTER_SLIDES": SlideDeckFormat.PRESENTER_SLIDES,
+            }
+            length_map = {
+                "SHORT": SlideDeckLength.SHORT,
+                "DEFAULT": SlideDeckLength.DEFAULT,
+            }
+
+            status = await self._client.artifacts.generate_slide_deck(
+                notebook_id,
+                slide_format=format_map.get(slide_format.upper(), SlideDeckFormat.DETAILED_DECK),
+                slide_length=length_map.get(slide_length.upper(), SlideDeckLength.DEFAULT),
+                instructions=instructions or None,
+            )
+            return {
+                "task_id": status.task_id,
+                "status": "started",
+            }
+        return await self._with_retry(_generate)
+
+    async def generate_infographic(
+        self,
+        notebook_id: str,
+        instructions: str = "",
+        orientation: str = "LANDSCAPE",
+        detail_level: str = "STANDARD",
+    ) -> dict:
+        """Generate infographic from notebook content.
+
+        Args:
+            notebook_id: The notebook ID
+            instructions: Custom instructions for the infographic
+            orientation: LANDSCAPE, PORTRAIT, or SQUARE
+            detail_level: CONCISE, STANDARD, or DETAILED
+        """
+        async def _generate():
+            from notebooklm.rpc.types import InfographicOrientation, InfographicDetail
+
+            orientation_map = {
+                "LANDSCAPE": InfographicOrientation.LANDSCAPE,
+                "PORTRAIT": InfographicOrientation.PORTRAIT,
+                "SQUARE": InfographicOrientation.SQUARE,
+            }
+            detail_map = {
+                "CONCISE": InfographicDetail.CONCISE,
+                "STANDARD": InfographicDetail.STANDARD,
+                "DETAILED": InfographicDetail.DETAILED,
+            }
+
+            status = await self._client.artifacts.generate_infographic(
+                notebook_id,
+                orientation=orientation_map.get(orientation.upper(), InfographicOrientation.LANDSCAPE),
+                detail_level=detail_map.get(detail_level.upper(), InfographicDetail.STANDARD),
+                instructions=instructions or None,
+            )
+            return {
+                "task_id": status.task_id,
+                "status": "started",
+            }
+        return await self._with_retry(_generate)
+
+    async def download_slide_deck(
+        self,
+        notebook_id: str,
+        output_path: str,
+        artifact_id: str = None,
+    ) -> str:
+        """Download generated slide deck as PDF."""
+        async def _download():
+            path = await self._client.artifacts.download_slide_deck(
+                notebook_id,
+                output_path,
+                artifact_id=artifact_id,
+            )
+            return str(path)
+        return await self._with_retry(_download)
+
+    async def download_infographic(
+        self,
+        notebook_id: str,
+        output_path: str,
+        artifact_id: str = None,
+    ) -> str:
+        """Download generated infographic as PNG."""
+        async def _download():
+            path = await self._client.artifacts.download_infographic(
+                notebook_id,
+                output_path,
+                artifact_id=artifact_id,
+            )
+            return str(path)
+        return await self._with_retry(_download)
+
     async def get_audio_status(self, notebook_id: str, task_id: str) -> dict:
         """Get status of an audio generation task."""
         async def _status():

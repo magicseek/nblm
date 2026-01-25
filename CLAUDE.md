@@ -48,10 +48,10 @@ python scripts/run.py auth_manager.py status --service zlibrary
 python scripts/run.py auth_manager.py reauth --service google   # Re-authenticate
 python scripts/run.py auth_manager.py clear --service zlibrary  # Clear auth data
 
-# Notebook Library
+# Notebook Library (Smart Add auto-discovers metadata)
 python scripts/run.py notebook_manager.py list
-python scripts/run.py notebook_manager.py add --url URL --name NAME --description DESC --topics TOPICS
-python scripts/run.py notebook_manager.py add --notebook-id ID --name NAME --description DESC --topics TOPICS
+python scripts/run.py notebook_manager.py add <notebook-id-or-url>  # Auto-discovers name, description, topics
+python scripts/run.py notebook_manager.py add <id> --name "Override Name" --topics "custom,topics"
 python scripts/run.py notebook_manager.py search --query KEYWORD
 python scripts/run.py notebook_manager.py activate --id ID
 python scripts/run.py notebook_manager.py remove --id ID

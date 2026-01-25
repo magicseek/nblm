@@ -158,11 +158,11 @@ $IF($ARGUMENTS,
 
   **debate** → `python scripts/run.py artifact_manager.py generate --format DEBATE <args>`
 
-  **slides** → `python scripts/run.py artifact_manager.py generate --format SLIDES <args>`
+  **slides** → `python scripts/run.py artifact_manager.py generate-slides <args>`
 
   **slides-download [output-path]** → `python scripts/run.py artifact_manager.py download "<output-path>" --type slide-deck`
 
-  **infographic** → `python scripts/run.py artifact_manager.py generate --format INFOGRAPHIC <args>`
+  **infographic** → `python scripts/run.py artifact_manager.py generate-infographic <args>`
 
   **infographic-download [output-path]** → `python scripts/run.py artifact_manager.py download "<output-path>" --type infographic`
 
@@ -191,6 +191,36 @@ $IF($ARGUMENTS,
 | `--wait` | Wait for generation to complete |
 | `--output` | Download path (requires `--wait`) |
 
+## Slide Deck Options
+
+```
+/nblm slides --format DETAILED_DECK --wait --output ./presentation.pdf
+/nblm slides --instructions "Focus on key diagrams" --format PRESENTER_SLIDES
+```
+
+| Option | Values |
+|--------|--------|
+| `--format` | `DETAILED_DECK`, `PRESENTER_SLIDES` |
+| `--length` | `SHORT`, `DEFAULT` |
+| `--instructions` | Custom instructions for the content |
+| `--wait` | Wait for generation to complete |
+| `--output` | Download path (requires `--wait`) |
+
+## Infographic Options
+
+```
+/nblm infographic --orientation LANDSCAPE --wait --output ./visual.png
+/nblm infographic --instructions "Highlight comparison" --detail-level DETAILED
+```
+
+| Option | Values |
+|--------|--------|
+| `--orientation` | `LANDSCAPE`, `PORTRAIT`, `SQUARE` |
+| `--detail-level` | `CONCISE`, `STANDARD`, `DETAILED` |
+| `--instructions` | Custom instructions for the content |
+| `--wait` | Wait for generation to complete |
+| `--output` | Download path (requires `--wait`) |
+
 ## Media Generation
 
 | Command | Description | Output |
@@ -206,8 +236,8 @@ $IF($ARGUMENTS,
 /nblm podcast --wait --output ./deep-dive.mp3
 /nblm briefing --instructions "Focus on chapter 3" --wait
 /nblm debate --length LONG --wait --output ./debate.mp3
-/nblm slides --instructions "Include key diagrams" --wait --output ./presentation.pdf
-/nblm infographic --wait --output ./summary.png
+/nblm slides --instructions "Include key diagrams" --format DETAILED_DECK --wait --output ./presentation.pdf
+/nblm infographic --orientation LANDSCAPE --detail-level DETAILED --wait --output ./summary.png
 ```
 
 ### Download & Manage
@@ -235,24 +265,26 @@ Trigger when user:
 
 ## ⚠️ CRITICAL: Add Command - Smart Discovery
 
-When user wants to add a notebook without providing details:
+The add command now **automatically discovers metadata** from the notebook:
 
-**SMART ADD (Recommended)**: Query the notebook first to discover its content:
 ```bash
-# Step 1: Query the notebook about its content
-python scripts/run.py ask_question.py --question "What is the content of this notebook? What topics are covered? Provide a complete overview briefly and concisely" --notebook-url "[URL]"
+# Smart Add (auto-discovers name, description, topics)
+python scripts/run.py notebook_manager.py add <notebook-id-or-url>
 
-# Step 2: Use the discovered information to add it
-python scripts/run.py notebook_manager.py add --url "[URL]" --name "[Based on content]" --description "[Based on content]" --topics "[Based on content]"
+# With optional overrides
+python scripts/run.py notebook_manager.py add <id> --name "Custom Name" --topics "custom,topics"
 ```
 
-**MANUAL ADD**: If user provides all details:
-- `--url` - The NotebookLM URL
-- `--name` - A descriptive name
-- `--description` - What the notebook contains (REQUIRED!)
-- `--topics` - Comma-separated topics (REQUIRED!)
+**What Smart Add does:**
+1. Fetches notebook title from NotebookLM API
+2. Queries the notebook content to generate description and topics
+3. Adds to local library with discovered metadata
 
-NEVER guess or use generic descriptions! If details missing, use Smart Add to discover them.
+**Supported input formats:**
+- Notebook ID: `5fd9f36b-8000-401d-a7a0-7aa3f7832644`
+- Full URL: `https://notebooklm.google.com/notebook/5fd9f36b-8000-401d-a7a0-7aa3f7832644`
+
+NEVER manually specify `--name`, `--description`, or `--topics` unless the user explicitly provides them.
 
 ## Critical: Always Use run.py Wrapper
 

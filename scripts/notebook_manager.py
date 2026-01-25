@@ -5,10 +5,11 @@ Manages a library of NotebookLM notebooks with metadata
 Based on the MCP server implementation
 """
 
+import asyncio
 import json
 import argparse
-import uuid
-import os
+import re
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
@@ -305,21 +306,86 @@ class NotebookLibrary:
         }
 
 
+def extract_notebook_id(input_value: str) -> Optional[str]:
+    """Extract notebook ID from URL or raw ID input."""
+    # UUID pattern for notebook IDs
+    uuid_pattern = r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+
+    # If it's a URL, extract the ID
+    if 'notebooklm.google.com' in input_value:
+        match = re.search(uuid_pattern, input_value)
+        if match:
+            return match.group(0)
+        return None
+
+    # Check if it's already a valid UUID
+    if re.match(f'^{uuid_pattern}$', input_value):
+        return input_value
+
+    return None
+
+
+async def discover_notebook_metadata(notebook_id: str) -> Dict[str, Any]:
+    """Query notebook to discover its name, description, and topics."""
+    from notebooklm_wrapper import NotebookLMWrapper, NotebookLMError
+
+    result = {
+        'name': 'Untitled',
+        'description': '',
+        'topics': []
+    }
+
+    async with NotebookLMWrapper() as wrapper:
+        # Get notebook title from API
+        print("   Fetching notebook info...")
+        notebooks = await wrapper.list_notebooks()
+        for nb in notebooks:
+            if nb.get('id') == notebook_id:
+                result['name'] = nb.get('title', 'Untitled')
+                break
+
+        # Query notebook content for description and topics
+        print("   Analyzing notebook content...")
+        try:
+            question = (
+                "What is this notebook about? Respond in this exact JSON format only, no other text:\n"
+                '{"description": "one sentence description", "topics": ["topic1", "topic2", "topic3"]}'
+            )
+            response = await wrapper.chat(notebook_id, question)
+            text = response.get('text', '')
+
+            # Extract JSON from response
+            json_match = re.search(r'\{[^{}]*"description"[^{}]*"topics"[^{}]*\}', text, re.DOTALL)
+            if json_match:
+                parsed = json.loads(json_match.group(0))
+                result['description'] = parsed.get('description', '')
+                result['topics'] = parsed.get('topics', [])
+            else:
+                # Fallback: use the response as description
+                result['description'] = text[:200] if text else ''
+        except NotebookLMError as e:
+            print(f"   ⚠️ Could not analyze content: {e.message}")
+        except Exception as e:
+            print(f"   ⚠️ Could not analyze content: {e}")
+
+    return result
+
+
 def main():
     """Command-line interface for notebook management"""
     parser = argparse.ArgumentParser(description='Manage NotebookLM library')
 
     subparsers = parser.add_subparsers(dest='command', help='Commands')
 
-    # Add command
-    add_parser = subparsers.add_parser('add', help='Add a notebook')
-    add_parser.add_argument('--url', help='NotebookLM URL or notebook ID (auto-detected)')
-    add_parser.add_argument('--notebook-id', help='NotebookLM notebook ID (alternative to --url)')
-    add_parser.add_argument('--name', required=True, help='Display name')
-    add_parser.add_argument('--description', required=True, help='Description')
-    add_parser.add_argument('--topics', required=True, help='Comma-separated topics')
-    add_parser.add_argument('--use-cases', help='Comma-separated use cases')
-    add_parser.add_argument('--tags', help='Comma-separated tags')
+    # Add command - Smart Add with auto-discovery
+    add_parser = subparsers.add_parser('add', help='Add a notebook (auto-discovers metadata)')
+    add_parser.add_argument('identifier', nargs='?', help='Notebook ID or URL')
+    add_parser.add_argument('--url', help='NotebookLM URL (alternative to positional)')
+    add_parser.add_argument('--notebook-id', help='NotebookLM notebook ID (alternative to positional)')
+    add_parser.add_argument('--name', help='Override auto-discovered name')
+    add_parser.add_argument('--description', help='Override auto-discovered description')
+    add_parser.add_argument('--topics', help='Override auto-discovered topics (comma-separated)')
+    add_parser.add_argument('--tags', help='Additional tags (comma-separated)')
 
     # List command
     subparsers.add_parser('list', help='List all notebooks')
@@ -346,34 +412,52 @@ def main():
 
     # Execute command
     if args.command == 'add':
-        # Determine URL from --url or --notebook-id (intelligent detection)
-        input_value = args.url or args.notebook_id
+        # Smart Add: auto-discover metadata from notebook
+        input_value = args.identifier or args.url or args.notebook_id
 
         if not input_value:
-            print("❌ Error: Either --url or --notebook-id is required")
-            return
+            print("❌ Error: Provide a notebook ID or URL")
+            print("   Usage: notebook_manager.py add <notebook-id-or-url>")
+            return 1
 
-        # Intelligently detect if input is a URL or notebook ID
-        if input_value.startswith('http://') or input_value.startswith('https://'):
-            # It's a full URL
-            url = input_value
-        elif 'notebooklm.google.com' in input_value:
-            # Partial URL without protocol
-            url = f"https://{input_value}"
-        else:
-            # Assume it's a notebook ID, convert to full URL
-            url = f"https://notebooklm.google.com/notebook/{input_value}"
+        # Extract notebook ID from input
+        notebook_id = extract_notebook_id(input_value)
+        if not notebook_id:
+            print(f"❌ Error: Cannot extract notebook ID from: {input_value}")
+            return 1
 
-        topics = [t.strip() for t in args.topics.split(',')]
-        use_cases = [u.strip() for u in args.use_cases.split(',')] if args.use_cases else None
-        tags = [t.strip() for t in args.tags.split(',')] if args.tags else None
+        url = f"https://notebooklm.google.com/notebook/{notebook_id}"
+
+        # Check for duplicates by URL
+        for existing in library.notebooks.values():
+            if notebook_id in existing.get('url', ''):
+                print(f"❌ Error: Notebook already in library as '{existing['name']}' ({existing['id']})")
+                return 1
+
+        print(f"🔍 Discovering notebook metadata...")
+
+        # Auto-discover metadata using async wrapper
+        try:
+            discovered = asyncio.run(discover_notebook_metadata(notebook_id))
+        except Exception as e:
+            print(f"❌ Error discovering metadata: {e}")
+            return 1
+
+        # Use discovered values, allow overrides
+        name = args.name or discovered.get('name', 'Untitled')
+        description = args.description or discovered.get('description', '')
+        topics = [t.strip() for t in args.topics.split(',')] if args.topics else discovered.get('topics', [])
+        tags = [t.strip() for t in args.tags.split(',')] if args.tags else []
+
+        print(f"   Name: {name}")
+        print(f"   Description: {description[:80]}{'...' if len(description) > 80 else ''}")
+        print(f"   Topics: {', '.join(topics)}")
 
         notebook = library.add_notebook(
             url=url,
-            name=args.name,
-            description=args.description,
+            name=name,
+            description=description,
             topics=topics,
-            use_cases=use_cases,
             tags=tags
         )
         print(json.dumps(notebook, indent=2))

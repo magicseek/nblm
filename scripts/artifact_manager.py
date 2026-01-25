@@ -137,6 +137,100 @@ async def cmd_generate_audio(args):
             print(json.dumps(result, indent=2))
 
 
+async def cmd_generate_slides(args):
+    """Generate a slide deck from notebook content."""
+    notebook_id = get_notebook_id(args.notebook_id)
+
+    async with NotebookLMWrapper() as wrapper:
+        print("📊 Starting slide deck generation...")
+        print(f"   Format: {args.format}")
+        print(f"   Length: {args.length}")
+        if args.instructions:
+            print(f"   Instructions: {args.instructions[:50]}...")
+
+        result = await wrapper.generate_slide_deck(
+            notebook_id,
+            instructions=args.instructions or "",
+            slide_format=args.format,
+            slide_length=args.length,
+        )
+
+        task_id = result.get("task_id")
+        print(f"   Task ID: {task_id}")
+
+        if args.wait:
+            print("\n⏳ Waiting for generation to complete...")
+            final = await wrapper.wait_for_audio(
+                notebook_id,
+                task_id,
+                timeout=args.timeout,
+                poll_interval=10,
+            )
+
+            if final.get("is_complete"):
+                print("✅ Slide deck generation complete!")
+                if args.output:
+                    print(f"📥 Downloading to: {args.output}")
+                    path = await wrapper.download_slide_deck(notebook_id, args.output, task_id)
+                    print(f"✅ Saved to: {path}")
+                elif final.get("url"):
+                    print(f"🔗 URL: {final['url']}")
+            elif final.get("is_failed"):
+                print(f"❌ Generation failed: {final.get('error', 'Unknown error')}")
+                sys.exit(1)
+        else:
+            print("\n💡 Use --wait to wait for completion, or check status with:")
+            print(f"   python scripts/run.py artifact_manager.py status --task-id {task_id}")
+            print(json.dumps(result, indent=2))
+
+
+async def cmd_generate_infographic(args):
+    """Generate an infographic from notebook content."""
+    notebook_id = get_notebook_id(args.notebook_id)
+
+    async with NotebookLMWrapper() as wrapper:
+        print("🖼️ Starting infographic generation...")
+        print(f"   Orientation: {args.orientation}")
+        print(f"   Detail Level: {args.detail_level}")
+        if args.instructions:
+            print(f"   Instructions: {args.instructions[:50]}...")
+
+        result = await wrapper.generate_infographic(
+            notebook_id,
+            instructions=args.instructions or "",
+            orientation=args.orientation,
+            detail_level=args.detail_level,
+        )
+
+        task_id = result.get("task_id")
+        print(f"   Task ID: {task_id}")
+
+        if args.wait:
+            print("\n⏳ Waiting for generation to complete...")
+            final = await wrapper.wait_for_audio(
+                notebook_id,
+                task_id,
+                timeout=args.timeout,
+                poll_interval=10,
+            )
+
+            if final.get("is_complete"):
+                print("✅ Infographic generation complete!")
+                if args.output:
+                    print(f"📥 Downloading to: {args.output}")
+                    path = await wrapper.download_infographic(notebook_id, args.output, task_id)
+                    print(f"✅ Saved to: {path}")
+                elif final.get("url"):
+                    print(f"🔗 URL: {final['url']}")
+            elif final.get("is_failed"):
+                print(f"❌ Generation failed: {final.get('error', 'Unknown error')}")
+                sys.exit(1)
+        else:
+            print("\n💡 Use --wait to wait for completion, or check status with:")
+            print(f"   python scripts/run.py artifact_manager.py status --task-id {task_id}")
+            print(json.dumps(result, indent=2))
+
+
 async def cmd_status(args):
     """Check status of an audio generation task."""
     notebook_id = get_notebook_id(args.notebook_id)
@@ -230,6 +324,46 @@ def main():
     p.add_argument("--output", "-o", help="Download path (requires --wait)")
     p.add_argument("--timeout", type=int, default=600, help="Timeout in seconds (default: 600)")
 
+    # Generate slides command
+    p = subparsers.add_parser("generate-slides", help="Generate slide deck presentation")
+    p.add_argument("--notebook-id", help="Notebook ID")
+    p.add_argument("--instructions", help="Custom instructions for the slide deck")
+    p.add_argument(
+        "--format",
+        choices=["DETAILED_DECK", "PRESENTER_SLIDES"],
+        default="DETAILED_DECK",
+        help="Slide format (default: DETAILED_DECK)",
+    )
+    p.add_argument(
+        "--length",
+        choices=["SHORT", "DEFAULT"],
+        default="DEFAULT",
+        help="Slide deck length (default: DEFAULT)",
+    )
+    p.add_argument("--wait", action="store_true", help="Wait for generation to complete")
+    p.add_argument("--output", "-o", help="Download path (requires --wait)")
+    p.add_argument("--timeout", type=int, default=600, help="Timeout in seconds (default: 600)")
+
+    # Generate infographic command
+    p = subparsers.add_parser("generate-infographic", help="Generate infographic")
+    p.add_argument("--notebook-id", help="Notebook ID")
+    p.add_argument("--instructions", help="Custom instructions for the infographic")
+    p.add_argument(
+        "--orientation",
+        choices=["LANDSCAPE", "PORTRAIT", "SQUARE"],
+        default="LANDSCAPE",
+        help="Infographic orientation (default: LANDSCAPE)",
+    )
+    p.add_argument(
+        "--detail-level",
+        choices=["CONCISE", "STANDARD", "DETAILED"],
+        default="STANDARD",
+        help="Detail level (default: STANDARD)",
+    )
+    p.add_argument("--wait", action="store_true", help="Wait for generation to complete")
+    p.add_argument("--output", "-o", help="Download path (requires --wait)")
+    p.add_argument("--timeout", type=int, default=600, help="Timeout in seconds (default: 600)")
+
     # Status command
     p = subparsers.add_parser("status", help="Check audio generation status")
     p.add_argument("--task-id", required=True, help="Task ID from generate command")
@@ -271,6 +405,8 @@ def main():
         "get": cmd_get,
         "delete": cmd_delete,
         "generate": cmd_generate_audio,
+        "generate-slides": cmd_generate_slides,
+        "generate-infographic": cmd_generate_infographic,
         "status": cmd_status,
         "download": cmd_download,
     }
