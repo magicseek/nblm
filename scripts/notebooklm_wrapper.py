@@ -406,6 +406,106 @@ class NotebookLMWrapper:
             return str(path)
         return await self._with_retry(_download)
 
+    async def list_artifacts(self, notebook_id: str, artifact_type: str = None) -> List[dict]:
+        """List all artifacts in a notebook.
+
+        Args:
+            notebook_id: The notebook ID
+            artifact_type: Optional filter - 'audio', 'video', 'slide-deck', 'infographic'
+        """
+        async def _list():
+            artifacts = await self._client.artifacts.list(notebook_id)
+            result = []
+            for artifact in artifacts:
+                # Handle different possible attribute names from the API
+                art_type = getattr(artifact, 'artifact_type', None) or getattr(artifact, 'type', None) or getattr(artifact, 'status_str', 'unknown')
+                item = {
+                    "artifact_id": artifact.id,
+                    "type": art_type,
+                    "title": getattr(artifact, 'title', None),
+                    "status": getattr(artifact, 'status', None) or getattr(artifact, 'status_str', None),
+                    "is_completed": getattr(artifact, 'is_completed', False),
+                    "created_at": getattr(artifact, 'created_at', None),
+                    "url": getattr(artifact, 'url', None),
+                }
+                if artifact_type is None or str(art_type).lower() == artifact_type.lower():
+                    result.append(item)
+            return result
+        return await self._with_retry(_list)
+
+    async def get_artifact(self, notebook_id: str, artifact_id: str) -> dict:
+        """Get details of a specific artifact."""
+        async def _get():
+            artifact = await self._client.artifacts.get(notebook_id, artifact_id)
+            art_type = getattr(artifact, 'artifact_type', None) or getattr(artifact, 'type', None) or getattr(artifact, 'status_str', 'unknown')
+            return {
+                "artifact_id": artifact.id,
+                "type": art_type,
+                "title": getattr(artifact, 'title', None),
+                "status": getattr(artifact, 'status', None) or getattr(artifact, 'status_str', None),
+                "is_complete": getattr(artifact, 'is_completed', False),
+                "is_failed": getattr(artifact, 'is_failed', False),
+                "url": getattr(artifact, 'url', None),
+                "error": getattr(artifact, 'error', None),
+                "created_at": getattr(artifact, 'created_at', None),
+            }
+        return await self._with_retry(_get)
+
+    async def delete_artifact(self, notebook_id: str, artifact_id: str) -> bool:
+        """Delete an artifact from a notebook."""
+        async def _delete():
+            await self._client.artifacts.delete(notebook_id, artifact_id)
+            return True
+        return await self._with_retry(_delete)
+
+    async def get_audio_status(self, notebook_id: str, task_id: str) -> dict:
+        """Get status of an audio generation task."""
+        async def _status():
+            status = await self._client.artifacts.poll_status(notebook_id, task_id)
+            return {
+                "task_id": task_id,
+                "status": getattr(status, 'status', 'unknown'),
+                "is_complete": getattr(status, 'is_complete', False),
+                "is_failed": getattr(status, 'is_failed', False),
+                "progress": getattr(status, 'progress', None),
+                "url": getattr(status, 'url', None),
+                "error": getattr(status, 'error', None),
+            }
+        return await self._with_retry(_status)
+
+    async def download_artifact(
+        self,
+        notebook_id: str,
+        artifact_id: str,
+        output_path: str,
+        artifact_type: str = "audio",
+    ) -> str:
+        """Download any artifact type to local path.
+
+        Args:
+            notebook_id: The notebook ID
+            artifact_id: The artifact ID
+            output_path: Local path to save the file
+            artifact_type: 'audio', 'video', 'slide-deck', 'infographic'
+        """
+        async def _download():
+            download_methods = {
+                "audio": self._client.artifacts.download_audio,
+                "video": self._client.artifacts.download_video,
+                "slide-deck": self._client.artifacts.download_slide_deck,
+                "infographic": self._client.artifacts.download_infographic,
+            }
+            method = download_methods.get(artifact_type)
+            if not method:
+                raise NotebookLMError(
+                    f"Unknown artifact type: {artifact_type}",
+                    code="INVALID_TYPE",
+                    recovery="Use: audio, video, slide-deck, or infographic",
+                )
+            path = await method(notebook_id, output_path, artifact_id=artifact_id)
+            return str(path)
+        return await self._with_retry(_download)
+
     # === Browser Fallback ===
 
     async def _fallback_create_notebook(self, name: str) -> dict:

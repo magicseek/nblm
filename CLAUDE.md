@@ -66,6 +66,17 @@ python scripts/run.py source_manager.py add --file "/path/to/book.pdf"
 python scripts/run.py cleanup_manager.py                    # Preview
 python scripts/run.py cleanup_manager.py --confirm          # Execute
 python scripts/run.py cleanup_manager.py --preserve-library # Keep notebooks
+
+# Artifacts (Audio/Podcast Generation)
+python scripts/run.py artifact_manager.py list                              # List all artifacts
+python scripts/run.py artifact_manager.py list --type audio                 # List audio only
+python scripts/run.py artifact_manager.py get <artifact-id>                 # Get artifact details
+python scripts/run.py artifact_manager.py delete <artifact-id>              # Delete artifact
+python scripts/run.py artifact_manager.py generate --wait --output podcast.mp3  # Generate & download
+python scripts/run.py artifact_manager.py generate --format DEBATE --length SHORT
+python scripts/run.py artifact_manager.py generate --instructions "Focus on key findings"
+python scripts/run.py artifact_manager.py status --task-id <task-id>        # Check generation status
+python scripts/run.py artifact_manager.py download ./output.mp3             # Download latest audio
 ```
 
 ## Architecture
@@ -77,6 +88,7 @@ scripts/
 ├── auth_manager.py       # Multi-service authentication and session persistence
 ├── notebook_manager.py   # CRUD operations for notebook library (library.json)
 ├── source_manager.py     # Source ingestion (file/Z-Library)
+├── artifact_manager.py   # Audio/podcast generation and artifact management
 ├── agent_browser_client.py # Unix socket client for agent-browser daemon
 ├── cleanup_manager.py    # Data cleanup with preservation options
 ├── config.py             # Configuration management
@@ -114,7 +126,7 @@ This skill uses **two foundation libraries** for NotebookLM integration:
 
 2. **notebooklm-py** (pip - teng-lin/notebooklm-py)
    - Python async API client for Google NotebookLM
-   - Used for: All NotebookLM API operations (notebooks, sources, chat)
+   - Used for: All NotebookLM API operations (notebooks, sources, chat, artifacts)
    - Key APIs:
      - `client.notebooks.create(name)` - Create notebooks
      - `client.notebooks.list()` - List notebooks
@@ -124,6 +136,9 @@ This skill uses **two foundation libraries** for NotebookLM integration:
      - `client.sources.add_text(notebook_id, title, content)` - Add text
      - `client.sources.list(notebook_id)` - List sources
      - `client.chat(notebook_id, message)` - Query notebook
+     - `client.artifacts.generate_audio(notebook_id, ...)` - Generate podcast
+     - `client.artifacts.list(notebook_id)` - List artifacts
+     - `client.artifacts.download_audio(notebook_id, path)` - Download audio
 
 **Architecture:**
 - API-first: All NotebookLM operations go through notebooklm-py

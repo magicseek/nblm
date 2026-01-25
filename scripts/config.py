@@ -16,6 +16,10 @@ GOOGLE_AUTH_FILE = AUTH_DIR / "google.json"
 ZLIBRARY_AUTH_FILE = AUTH_DIR / "zlibrary.json"
 LIBRARY_FILE = DATA_DIR / "library.json"
 
+# Set NOTEBOOKLM_HOME to use our auth directory for notebooklm-py
+# This ensures download methods find our storage_state.json
+os.environ.setdefault("NOTEBOOKLM_HOME", str(AUTH_DIR))
+
 # Agent-browser configuration
 AGENT_BROWSER_PROFILE_DIR = DATA_DIR / "agent_browser" / "profile"
 AGENT_BROWSER_SESSION_FILE = DATA_DIR / "agent_browser" / "session_id"

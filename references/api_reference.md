@@ -130,6 +130,63 @@ python scripts/run.py cleanup_manager.py --confirm --force
 - `--preserve-library`: Keep notebook library
 - `--force`: Skip confirmation prompt
 
+### artifact_manager.py
+Manage audio overviews, podcasts, and other generated artifacts.
+
+```bash
+# List all artifacts
+python scripts/run.py artifact_manager.py list
+
+# List only audio artifacts
+python scripts/run.py artifact_manager.py list --type audio
+
+# Get artifact details
+python scripts/run.py artifact_manager.py get <artifact-id>
+
+# Delete an artifact
+python scripts/run.py artifact_manager.py delete <artifact-id>
+
+# Generate audio podcast (async - returns immediately)
+python scripts/run.py artifact_manager.py generate
+
+# Generate with custom options
+python scripts/run.py artifact_manager.py generate \
+  --format DEEP_DIVE \
+  --length DEFAULT \
+  --instructions "Focus on the key findings"
+
+# Generate and wait for completion
+python scripts/run.py artifact_manager.py generate --wait
+
+# Generate, wait, and download
+python scripts/run.py artifact_manager.py generate --wait --output ./podcast.mp3
+
+# Check generation status
+python scripts/run.py artifact_manager.py status --task-id <task-id>
+
+# Download latest audio
+python scripts/run.py artifact_manager.py download ./output.mp3
+
+# Download specific artifact
+python scripts/run.py artifact_manager.py download ./output.mp3 --artifact-id <id>
+```
+
+**Commands:**
+- `list`: List all artifacts (filter with `--type`)
+- `get`: Get artifact details by ID
+- `delete`: Delete an artifact
+- `generate`: Generate audio podcast
+- `status`: Check generation task status
+- `download`: Download artifact to local file
+
+**Generate Options:**
+- `--format`: `DEEP_DIVE` (default), `BRIEF`, `CRITIQUE`, `DEBATE`
+- `--length`: `SHORT`, `DEFAULT`, `LONG`
+- `--instructions`: Custom instructions for the podcast
+- `--wait`: Wait for generation to complete
+- `--output`: Download path (requires `--wait`)
+- `--timeout`: Timeout in seconds (default: 600)
+
 ### run.py
 Script wrapper that handles environment setup.
 
