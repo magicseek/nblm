@@ -313,8 +313,8 @@ def main():
 
     # Add command
     add_parser = subparsers.add_parser('add', help='Add a notebook')
-    add_parser.add_argument('--url', help='NotebookLM URL (e.g., https://notebooklm.google.com/notebook/...)')
-    add_parser.add_argument('--notebook-id', help='NotebookLM notebook ID (the ID portion from the URL)')
+    add_parser.add_argument('--url', help='NotebookLM URL or notebook ID (auto-detected)')
+    add_parser.add_argument('--notebook-id', help='NotebookLM notebook ID (alternative to --url)')
     add_parser.add_argument('--name', required=True, help='Display name')
     add_parser.add_argument('--description', required=True, help='Description')
     add_parser.add_argument('--topics', required=True, help='Comma-separated topics')
@@ -346,15 +346,23 @@ def main():
 
     # Execute command
     if args.command == 'add':
-        # Determine URL from --url or --notebook-id
-        if args.url:
-            url = args.url
-        elif args.notebook_id:
-            # Convert notebook ID to full URL
-            url = f"https://notebooklm.google.com/notebook/{args.notebook_id}"
-        else:
+        # Determine URL from --url or --notebook-id (intelligent detection)
+        input_value = args.url or args.notebook_id
+
+        if not input_value:
             print("❌ Error: Either --url or --notebook-id is required")
             return
+
+        # Intelligently detect if input is a URL or notebook ID
+        if input_value.startswith('http://') or input_value.startswith('https://'):
+            # It's a full URL
+            url = input_value
+        elif 'notebooklm.google.com' in input_value:
+            # Partial URL without protocol
+            url = f"https://{input_value}"
+        else:
+            # Assume it's a notebook ID, convert to full URL
+            url = f"https://notebooklm.google.com/notebook/{input_value}"
 
         topics = [t.strip() for t in args.topics.split(',')]
         use_cases = [u.strip() for u in args.use_cases.split(',')] if args.use_cases else None
