@@ -1,4 +1,4 @@
-# NotebookLM Skill Dependencies
+# nblm Dependencies
 # Browser automation now handled by agent-browser (Node.js)
 
 # Environment management

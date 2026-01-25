@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Agent Browser Client for NotebookLM Skill
+Agent Browser Client for nblm
 Python client that communicates with agent-browser daemon via Unix socket
 """
 

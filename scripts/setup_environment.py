@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Environment Setup for NotebookLM Skill
+Environment Setup for nblm
 Manages virtual environment and dependencies automatically
 """
 

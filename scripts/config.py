@@ -1,5 +1,5 @@
 """
-Configuration for NotebookLM Skill
+Configuration for nblm
 Centralizes constants, selectors, and paths
 """
 

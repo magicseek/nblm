@@ -1,5 +1,5 @@
 {
-  "name": "notebooklm-skill",
+  "name": "nblm",
   "version": "2.1.0",
   "private": true,
   "description": "Claude Code skill for NotebookLM integration using agent-browser",

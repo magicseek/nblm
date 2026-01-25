@@ -11,7 +11,7 @@ This is a non-negotiable project law.
 
 ## Project Overview
 
-NotebookLM Claude Code Skill - enables Claude Code to query Google NotebookLM for source-grounded, citation-backed answers. Uses the agent-browser daemon (Node.js) and a Unix socket protocol for automation.
+nblm - enables AI coding agents to query Google NotebookLM for source-grounded, citation-backed answers. Uses the agent-browser daemon (Node.js) and a Unix socket protocol for automation.
 
 **Session Model:** Stateless per question; the daemon keeps browser state in memory until it is stopped.
 

@@ -1,4 +1,4 @@
-# NotebookLM Skill Troubleshooting Guide
+# nblm Troubleshooting Guide
 
 ## Quick Fix Table
 

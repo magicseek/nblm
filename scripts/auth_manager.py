@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Authentication Manager for NotebookLM Skill
+Authentication Manager for nblm
 Handles Google authentication using agent-browser
 """
 

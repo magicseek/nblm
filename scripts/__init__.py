@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NotebookLM Skill Scripts Package
+nblm Scripts Package
 Provides automatic environment management for all scripts
 """
 

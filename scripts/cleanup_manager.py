@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Cleanup Manager for NotebookLM Skill
+Cleanup Manager for nblm
 Manages cleanup of skill data and browser state
 """
 

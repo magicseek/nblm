@@ -1,4 +1,4 @@
-# NotebookLM Skill Usage Patterns
+# nblm Usage Patterns
 
 Advanced patterns for using the NotebookLM skill effectively.
 
