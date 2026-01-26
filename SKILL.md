@@ -7,37 +7,12 @@ description: Use this skill to query your Google NotebookLM notebooks directly f
 
 Query Google NotebookLM for source-grounded, citation-backed answers.
 
-## ⚠️ MANDATORY: Pre-Flight Checks (Run BEFORE Any Command)
+## Environment
 
-**On EVERY `/nblm` invocation, you MUST run these checks in order:**
-
-### Step 1: Check Dependencies
-```bash
-# This command auto-installs Python venv, pip dependencies, and npm packages
-python scripts/run.py --check-deps
-```
-
-If the above fails with "command not found" or missing dependencies:
-```bash
-# Install Python dependencies
-cd /path/to/nblm && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
-
-# Install Node.js dependencies (required for browser automation)
-cd /path/to/nblm && npm install
-```
-
-### Step 2: Check Google Authentication
-```bash
-python scripts/run.py auth_manager.py status --service google
-```
-
-**If output shows "Not authenticated" or auth file missing:**
-1. Inform user: "Google authentication required. A browser window will open for login."
-2. Run: `python scripts/run.py auth_manager.py setup --service google`
-3. Wait for user to complete login in browser
-4. Verify: `python scripts/run.py auth_manager.py status --service google`
-
-**Only proceed to execute the user's command after both checks pass.**
+All dependencies and authentication are handled automatically by `run.py`:
+- First run creates `.venv` and installs Python/Node.js dependencies
+- If Google auth is missing or expired, a browser window opens automatically
+- No manual pre-flight steps required
 
 ---
 

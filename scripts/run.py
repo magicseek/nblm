@@ -4,9 +4,11 @@ Universal runner for NotebookLM skill scripts
 Ensures all scripts run with the correct virtual environment
 """
 
+import json
 import os
 import sys
 import subprocess
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -21,6 +23,13 @@ IGNORED_PROCESS_NAMES = {
     "python3",
     "node",
     "npm",
+}
+
+# Scripts that skip auth pre-check
+SKIP_AUTH_CHECK = {
+    "auth_manager.py",      # Handles its own auth
+    "cleanup_manager.py",   # Cleanup doesn't need auth
+    "setup_environment.py", # Setup script
 }
 
 
@@ -158,6 +167,76 @@ def ensure_node_deps():
             print("✅ agent-browser installed")
 
 
+def _prompt_auth_setup():
+    """Trigger interactive auth setup, return True on success."""
+    print("🔐 Google authentication required. Opening browser...")
+    print("   Please complete login in the browser window.")
+    print()
+
+    venv_python = get_venv_python()
+    skill_dir = Path(__file__).parent.parent
+    auth_script = skill_dir / "scripts" / "auth_manager.py"
+
+    result = subprocess.run([str(venv_python), str(auth_script), "setup", "--service", "google"])
+
+    if result.returncode != 0:
+        print("❌ Authentication failed. Cannot proceed.")
+        sys.exit(1)
+
+    print()  # Blank line after auth success
+    return True
+
+
+def ensure_google_auth():
+    """Ensure Google authentication is valid and fresh, prompting setup if needed."""
+    skill_dir = Path(__file__).parent.parent
+    auth_file = skill_dir / "data" / "auth" / "google.json"
+    TTL_DAYS = 10
+
+    # Check 1: File exists
+    if not auth_file.exists():
+        return _prompt_auth_setup()
+
+    # Check 2: Valid structure
+    try:
+        payload = json.loads(auth_file.read_text())
+    except (json.JSONDecodeError, IOError):
+        return _prompt_auth_setup()
+
+    if not payload.get("cookies") and not payload.get("origins"):
+        return _prompt_auth_setup()
+
+    # Check 3: Freshness (notebooklm_updated_at within TTL)
+    updated_at = payload.get("notebooklm_updated_at")
+    if updated_at:
+        try:
+            timestamp = datetime.fromisoformat(updated_at)
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=timezone.utc)
+            age = datetime.now(timezone.utc) - timestamp
+            if age > timedelta(days=TTL_DAYS):
+                print(f"⚠️ Google auth expired ({age.days} days old)")
+                return _prompt_auth_setup()
+        except ValueError:
+            pass  # Invalid timestamp, but cookies exist - proceed
+
+    # All checks passed - silent success
+    return True
+
+
+def should_skip_auth_check(script_name: str, script_args: list) -> bool:
+    """Determine if this invocation should skip auth pre-check."""
+    # Skip for help flags
+    if "--help" in script_args or "-h" in script_args:
+        return True
+
+    # Skip for scripts that don't need auth
+    if script_name in SKIP_AUTH_CHECK:
+        return True
+
+    return False
+
+
 def ensure_owner_pid_env():
     """Ensure agent-browser owner PID is set for watchdog cleanup"""
     if not os.environ.get("AGENT_BROWSER_OWNER_PID"):
@@ -230,6 +309,10 @@ def main():
     venv_python = ensure_venv()
     ensure_node_deps()
     ensure_owner_pid_env()
+
+    # Auth pre-check (unless skipped)
+    if not should_skip_auth_check(script_name, script_args):
+        ensure_google_auth()
 
     # Build command
     cmd = [str(venv_python), str(script_path)] + script_args
