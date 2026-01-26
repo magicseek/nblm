@@ -6,11 +6,13 @@ Generates platform-specific configuration files for various AI coding assistants
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Optional
 
 # Platform configurations
+# symlink_path: path relative to ~ where symlink to nblm should be created (Unix only)
 PLATFORMS = {
     "claude": {
         "name": "Claude Code",
@@ -19,6 +21,7 @@ PLATFORMS = {
         "filename": "SKILL.md",
         "description": "Claude Code (.claude/skills/)",
         "frontmatter": True,
+        "symlink_path": ".claude/skills/nblm",
     },
     "cursor": {
         "name": "Cursor",
@@ -27,6 +30,7 @@ PLATFORMS = {
         "filename": "nblm.md",
         "description": "Cursor (.cursor/commands/)",
         "frontmatter": False,
+        "symlink_path": ".cursor/skills/nblm",
     },
     "codex": {
         "name": "Codex",
@@ -35,6 +39,7 @@ PLATFORMS = {
         "filename": "SKILL.md",
         "description": "Codex (.codex/skills/)",
         "frontmatter": True,
+        "symlink_path": ".codex/skills/nblm",
     },
     "antigravity": {
         "name": "Antigravity",
@@ -43,6 +48,7 @@ PLATFORMS = {
         "filename": "SKILL.md",
         "description": "Antigravity (.agent/skills/)",
         "frontmatter": True,
+        "symlink_path": ".agent/skills/nblm",
     },
     "windsurf": {
         "name": "Windsurf",
@@ -51,6 +57,7 @@ PLATFORMS = {
         "filename": "nblm.md",
         "description": "Windsurf (.windsurf/workflows/)",
         "frontmatter": False,
+        "symlink_path": ".windsurf/skills/nblm",
     },
     "copilot": {
         "name": "GitHub Copilot",
@@ -59,6 +66,7 @@ PLATFORMS = {
         "filename": "nblm.md",
         "description": "GitHub Copilot (.github/copilot-instructions/)",
         "frontmatter": False,
+        "symlink_path": ".github/skills/nblm",
     },
 }
 
@@ -207,6 +215,55 @@ def get_nblm_repo_path() -> Path:
     return Path(__file__).parent.parent.resolve()
 
 
+def create_home_symlink(platform: str, nblm_path: Path, force: bool = False) -> Optional[Path]:
+    """Create symlink in user's home directory for the platform.
+
+    Creates: ~/.{agent}/skills/nblm -> nblm_path
+
+    Returns the symlink path if created, None if skipped.
+    """
+    # Skip on Windows - symlinks require admin privileges
+    if os.name == 'nt':
+        return None
+
+    config = PLATFORMS[platform]
+    symlink_rel = config.get("symlink_path")
+    if not symlink_rel:
+        return None
+
+    home = Path.home()
+    symlink_path = home / symlink_rel
+
+    # Check if symlink already exists
+    if symlink_path.exists() or symlink_path.is_symlink():
+        if not force:
+            if symlink_path.is_symlink():
+                current_target = symlink_path.resolve()
+                if current_target == nblm_path:
+                    # Already pointing to correct location
+                    return None
+            print(f"⚠️  Symlink exists: ~/{symlink_rel}")
+            print(f"   Use --force to overwrite")
+            return None
+        # Remove existing
+        if symlink_path.is_symlink() or symlink_path.is_file():
+            symlink_path.unlink()
+        elif symlink_path.is_dir():
+            import shutil
+            shutil.rmtree(symlink_path)
+
+    # Create parent directories
+    symlink_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Create symlink
+    try:
+        symlink_path.symlink_to(nblm_path)
+        return symlink_path
+    except OSError as e:
+        print(f"⚠️  Failed to create symlink ~/{symlink_rel}: {e}")
+        return None
+
+
 def generate_skill_file(platform: str, target_dir: Path, nblm_path: Path) -> Path:
     """Generate the skill/command file for a platform."""
     config = PLATFORMS[platform]
@@ -249,28 +306,40 @@ def init_platform(platform: str, target_dir: Optional[Path] = None, force: bool 
 
     platforms_to_init = list(PLATFORMS.keys()) if platform == "all" else [platform]
     created_folders = []
+    created_symlinks = []
 
     for plat in platforms_to_init:
         config = PLATFORMS[plat]
         skill_dir = target / config["root"] / config["skill_path"]
         skill_file = skill_dir / config["filename"]
 
-        # Check if already exists
+        # Step 1: Create symlink in home directory (Unix only)
+        symlink = create_home_symlink(plat, nblm_path, force)
+        if symlink:
+            created_symlinks.append(f"~/{config['symlink_path']}")
+            print(f"🔗 {config['name']}: Created symlink ~/{config['symlink_path']} -> {nblm_path}")
+
+        # Step 2: Check if command file already exists
         if skill_file.exists() and not force:
-            print(f"⚠️  {config['name']}: Already exists at {skill_file}")
+            print(f"⚠️  {config['name']}: Command file already exists at {skill_file}")
             print(f"   Use --force to overwrite")
             continue
 
-        # Generate file
+        # Step 3: Generate command file
         generated = generate_skill_file(plat, target, nblm_path)
         created_folders.append(config["root"])
         print(f"✅ {config['name']}: Created {generated}")
 
-    if created_folders:
+    if created_folders or created_symlinks:
         print()
-        print("📁 Created folders:")
-        for folder in sorted(set(created_folders)):
-            print(f"   + {folder}")
+        if created_symlinks:
+            print("🔗 Created symlinks (in home directory):")
+            for sym in created_symlinks:
+                print(f"   + {sym}")
+        if created_folders:
+            print("📁 Created command files (in project directory):")
+            for folder in sorted(set(created_folders)):
+                print(f"   + {folder}/")
         print()
         print("✅ nblm installed successfully!")
         print()
