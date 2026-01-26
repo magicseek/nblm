@@ -53,13 +53,6 @@ npx add-skill magicseek/nblm --global
 npx add-skill magicseek/nblm -a claude-code -a cursor -a opencode
 ```
 
-### Alternative: Manual installation
-
-```bash
-# Clone to your skills directory
-git clone https://github.com/magicseek/nblm ~/.claude/skills/nblm
-```
-
 ### Alternative: Platform-specific initialization
 
 If symlinks created by `add-skill` don't work well in your environment (e.g., Cursor), you can generate platform-specific files directly:
