@@ -21,77 +21,46 @@ from zlibrary.downloader import ZLibraryDownloader
 from zlibrary import epub_converter
 
 
-def _prompt_notebook_choice(library: NotebookLibrary, file_title: str) -> Optional[str]:
-    """Prompt user to choose between active notebook or create new.
+def _resolve_notebook_target(args, file_title: str) -> tuple[Optional[str], bool]:
+    """Resolve which notebook to use based on CLI args.
 
     Returns:
-        notebook_id if user chooses existing notebook, None if user wants to create new.
+        (notebook_id, create_new) tuple:
+        - (id, False) = use existing notebook with given ID
+        - (None, True) = create new notebook
+        - Raises SystemExit if invalid combination
     """
+    library = NotebookLibrary()
+
+    # Explicit notebook ID takes priority
+    if args.notebook_id:
+        return (args.notebook_id, False)
+
+    # --use-active flag
+    if args.use_active:
+        active = library.get_active_notebook()
+        if not active:
+            print("❌ No active notebook set.", file=sys.stderr)
+            print("   Set one with: python scripts/run.py notebook_manager.py activate --id <id>", file=sys.stderr)
+            print("   Or use --create-new to create a new notebook", file=sys.stderr)
+            raise SystemExit(1)
+        print(f"📓 Using active notebook: \"{active.get('name', 'Unnamed')}\"")
+        return (active.get("id"), False)
+
+    # --create-new flag
+    if args.create_new:
+        print(f"📓 Will create new notebook: \"{file_title}\"")
+        return (None, True)
+
+    # Neither flag provided - show error with options
     active = library.get_active_notebook()
-
-    print("\n📁 No notebook specified. Choose an option:")
-    print()
-
+    print("❌ No notebook specified. Please choose one of:", file=sys.stderr)
+    print(file=sys.stderr)
     if active:
-        active_name = active.get("name", "Unnamed")
-        active_id = active.get("id", "")
-        print(f"  [1] Upload to active notebook: \"{active_name}\"")
-        print(f"  [2] Create new notebook: \"{file_title}\"")
-        print()
-        sys.stdout.flush()
-
-        while True:
-            try:
-                choice = input("Enter choice (1 or 2): ").strip()
-                if choice == "1":
-                    print(f"\n✓ Using active notebook: {active_name}")
-                    return active_id
-                elif choice == "2":
-                    print(f"\n✓ Creating new notebook: {file_title}")
-                    return None
-                else:
-                    print("Please enter 1 or 2")
-            except (EOFError, KeyboardInterrupt):
-                print("\n\nCancelled.")
-                sys.exit(130)
-    else:
-        # No active notebook - list available notebooks
-        notebooks = library.list_notebooks()
-
-        if notebooks:
-            print("  [1] Create new notebook")
-            print("  [2] Choose from existing notebooks:")
-            for i, nb in enumerate(notebooks[:5], start=1):  # Show up to 5
-                print(f"      [{i+1}] {nb.get('name', 'Unnamed')}")
-            if len(notebooks) > 5:
-                print(f"      ... and {len(notebooks) - 5} more")
-            print()
-            sys.stdout.flush()
-
-            while True:
-                try:
-                    choice = input("Enter choice (1 for new, or notebook number): ").strip()
-                    if choice == "1":
-                        print(f"\n✓ Creating new notebook: {file_title}")
-                        return None
-                    elif choice.isdigit():
-                        idx = int(choice) - 2  # Offset for "Create new" option
-                        if 0 <= idx < len(notebooks):
-                            selected = notebooks[idx]
-                            print(f"\n✓ Using notebook: {selected.get('name', 'Unnamed')}")
-                            return selected.get("id")
-                        else:
-                            print(f"Please enter a number between 1 and {len(notebooks) + 1}")
-                    else:
-                        print("Please enter a valid number")
-                except (EOFError, KeyboardInterrupt):
-                    print("\n\nCancelled.")
-                    sys.exit(130)
-        else:
-            print(f"  No existing notebooks found.")
-            print(f"  Creating new notebook: \"{file_title}\"")
-            print()
-            return None
+        print(f"  --use-active    Upload to active notebook: \"{active.get('name', 'Unnamed')}\"", file=sys.stderr)
+    print(f"  --create-new    Create new notebook named after the file", file=sys.stderr)
+    print(f"  --notebook-id   Specify notebook ID explicitly", file=sys.stderr)
+    raise SystemExit(1)
 
 
 class SourceManager:
@@ -176,7 +145,6 @@ class SourceManager:
         file_path: Union[Path, List[Path]],
         notebook_id: Optional[str] = None,
         source_label: str = "upload",
-        interactive: bool = True,
     ) -> dict:
         """Upload local file(s) to NotebookLM."""
         paths = file_path if isinstance(file_path, list) else [file_path]
@@ -196,14 +164,6 @@ class SourceManager:
                 "error": "Google authentication required",
                 "recovery": "Run: python scripts/run.py auth_manager.py setup",
             }
-
-        # Prompt user if no notebook specified and interactive mode
-        if not notebook_id and interactive:
-            library = NotebookLibrary()
-            chosen_id = _prompt_notebook_choice(library, title)
-            if chosen_id:
-                notebook_id = chosen_id
-                resolved_notebook_id = notebook_id
 
         async with NotebookLMWrapper() as wrapper:
             if not notebook_id:
@@ -294,7 +254,7 @@ class SourceManager:
             "title": title
         }
 
-    async def add_from_zlibrary(self, url: str, notebook_id: Optional[str] = None, interactive: bool = True) -> dict:
+    async def add_from_zlibrary(self, url: str, notebook_id: Optional[str] = None) -> dict:
         """Download from Z-Library and upload to NotebookLM."""
         if not self.auth.is_authenticated("zlibrary"):
             raise RuntimeError(
@@ -315,14 +275,14 @@ class SourceManager:
         if file_format == "epub" or Path(file_path).suffix.lower() == ".epub":
             output_path = Path(tempfile.gettempdir()) / f"{Path(file_path).stem}.md"
             converted = self.converter.convert_epub_to_markdown(file_path, output_path)
-            return await self.add_from_file(converted, notebook_id, source_label="zlibrary", interactive=interactive)
+            return await self.add_from_file(converted, notebook_id, source_label="zlibrary")
 
-        return await self.add_from_file(Path(file_path), notebook_id, source_label="zlibrary", interactive=interactive)
+        return await self.add_from_file(Path(file_path), notebook_id, source_label="zlibrary")
 
-    async def add_from_url(self, url: str, notebook_id: Optional[str] = None, interactive: bool = True) -> dict:
+    async def add_from_url(self, url: str, notebook_id: Optional[str] = None) -> dict:
         """Smart routing based on URL pattern."""
         if self._is_zlibrary_url(url):
-            return await self.add_from_zlibrary(url, notebook_id, interactive=interactive)
+            return await self.add_from_zlibrary(url, notebook_id)
         raise ValueError(f"Unsupported URL: {url}")
 
 
@@ -332,15 +292,33 @@ async def async_main():
     parser.add_argument("--url", help="Source URL")
     parser.add_argument("--file", help="Local file path")
     parser.add_argument("--notebook-id", help="Existing notebook ID")
+    parser.add_argument("--use-active", action="store_true",
+                        help="Upload to currently active notebook")
+    parser.add_argument("--create-new", action="store_true",
+                        help="Create a new notebook for the upload")
 
     args = parser.parse_args()
+
+    # Validate mutually exclusive options
+    if args.use_active and args.create_new:
+        print("❌ Cannot use both --use-active and --create-new", file=sys.stderr)
+        raise SystemExit(1)
+    if args.notebook_id and (args.use_active or args.create_new):
+        print("❌ Cannot use --notebook-id with --use-active or --create-new", file=sys.stderr)
+        raise SystemExit(1)
+
     manager = SourceManager()
 
     if args.command == "add":
         if args.url:
-            result = await manager.add_from_url(args.url, args.notebook_id)
+            # For URLs, derive title from URL
+            file_title = Path(args.url).stem or "Untitled"
+            notebook_id, create_new = _resolve_notebook_target(args, file_title)
+            result = await manager.add_from_url(args.url, notebook_id)
         elif args.file:
-            result = await manager.add_from_file(Path(args.file), args.notebook_id)
+            file_title = Path(args.file).stem
+            notebook_id, create_new = _resolve_notebook_target(args, file_title)
+            result = await manager.add_from_file(Path(args.file), notebook_id)
         else:
             raise SystemExit("Provide --url or --file")
 

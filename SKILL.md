@@ -41,8 +41,8 @@ All dependencies and authentication are handled automatically by `run.py`:
 | Command | Description |
 |---------|-------------|
 | `sources [--id ID]` | List sources in notebook |
-| `upload <file>` | Upload local file (PDF, TXT, MD, DOCX) |
-| `upload-zlib <url>` | Download from Z-Library and upload |
+| `upload <file> [--use-active\|--create-new]` | Upload local file (PDF, TXT, MD, DOCX) |
+| `upload-zlib <url> [--use-active\|--create-new]` | Download from Z-Library and upload |
 | `upload-url <url>` | Add URL as source |
 | `upload-youtube <url>` | Add YouTube video as source |
 | `upload-text <title> [--content TEXT]` | Add text as source |
@@ -51,6 +51,15 @@ All dependencies and authentication are handled automatically by `run.py`:
 | `source-rename <source-id> <name>` | Rename a source |
 | `source-refresh <source-id>` | Re-fetch URL content |
 | `source-delete <source-id>` | Delete a source |
+
+**Upload options:**
+- `--use-active` - Upload to the currently active notebook
+- `--create-new` - Create a new notebook named after the file
+- `--notebook-id <id>` - Upload to a specific notebook
+
+**Important:** When user runs upload without specifying a target, ASK them first:
+> "Would you like to upload to the active notebook, or create a new notebook?"
+Then pass the appropriate flag (`--use-active` or `--create-new`).
 
 ### Chat & Audio/Media
 | Command | Description |
@@ -101,9 +110,13 @@ $IF($ARGUMENTS,
 
   **sources [--id ID]** → `python scripts/run.py nblm_cli.py sources <args>`
 
-  **upload <file>** → `python scripts/run.py source_manager.py add --file "<file>"`
+  **upload <file>** → First ASK user: "Upload to active notebook or create new?" Then:
+    - Active: `python scripts/run.py source_manager.py add --file "<file>" --use-active`
+    - New: `python scripts/run.py source_manager.py add --file "<file>" --create-new`
 
-  **upload-zlib <url>** → `python scripts/run.py source_manager.py add --url "<url>"`
+  **upload-zlib <url>** → First ASK user: "Upload to active notebook or create new?" Then:
+    - Active: `python scripts/run.py source_manager.py add --url "<url>" --use-active`
+    - New: `python scripts/run.py source_manager.py add --url "<url>" --create-new`
 
   **upload-url <url>** → `python scripts/run.py nblm_cli.py upload-url "<url>"`
 
@@ -418,10 +431,20 @@ python scripts/run.py ask_question.py --question "..." [--notebook-id ID] [--not
 
 ### Source Manager (`source_manager.py`)
 ```bash
-python scripts/run.py source_manager.py add --url "https://zh.zlib.li/book/..."
-python scripts/run.py source_manager.py add --file "/path/to/book.pdf"
-python scripts/run.py source_manager.py add --url "..." --notebook-id NOTEBOOK_ID
+# Upload to active notebook
+python scripts/run.py source_manager.py add --file "/path/to/book.pdf" --use-active
+
+# Create new notebook for upload
+python scripts/run.py source_manager.py add --file "/path/to/book.pdf" --create-new
+
+# Upload to specific notebook
+python scripts/run.py source_manager.py add --file "/path/to/book.pdf" --notebook-id NOTEBOOK_ID
+
+# Z-Library download and upload
+python scripts/run.py source_manager.py add --url "https://zh.zlib.li/book/..." --use-active
+python scripts/run.py source_manager.py add --url "https://zh.zlib.li/book/..." --create-new
 ```
+**Note:** One of `--use-active`, `--create-new`, or `--notebook-id` is REQUIRED.
 Uploads wait for NotebookLM processing and print progress as `Ready: N/T`. Press Ctrl+C to stop waiting.
 Local file uploads use browser automation and require Google authentication.
 If browser automation is unavailable, set `NOTEBOOKLM_UPLOAD_MODE=text` to upload extracted text instead (PDFs require `pypdf`).
