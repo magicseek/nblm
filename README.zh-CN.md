@@ -4,47 +4,29 @@
 
 # nblm
 
-**从 AI 编程助手直接查询 Google NotebookLM，获取基于来源、带引用的答案**
+### AI 编程助手通往 NotebookLM 的桥梁
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
 [![Agent Skill](https://img.shields.io/badge/Agent-Skill-purple.svg)](https://github.com/vercel-labs/add-skill)
 [![License](https://img.shields.io/github/license/magicseek/nblm)](LICENSE)
 
-🧠 **将你的 AI 编程助手连接到最智能的研究助理**
 <br/>
-<sub>NotebookLM 的 Gemini 问答能力与你的开发工作流完美融合</sub>
 
-⚡ **自然语言控制笔记本 — 无需切换上下文**
+🧠 **零幻觉** — 答案完全基于你的文档
 <br/>
-<sub>提问、上传文档、生成播客和幻灯片 — 全程不离开编辑器</sub>
-
-🔌 **可扩展的数据源管道 — 今天是 Z-Library，明天是无限可能**
+⚡ **零切换** — 在编辑器中提问、上传、生成播客和幻灯片
 <br/>
-<sub>插件架构已为 arXiv、Notion、Confluence 等做好准备</sub>
+🔌 **无限来源** — 今天是 Z-Library，明天是 arXiv / Notion / Confluence
 
----
+<br/>
 
-> 大幅减少幻觉 — 答案完全来自你上传的文档。
+<sub>支持 **Claude Code** · **Cursor** · **Windsurf** · **Codex** · 以及任何兼容 [Agent Skills](https://github.com/vercel-labs/add-skill) 的 AI 助手</sub>
 
-支持 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)、[Cursor](https://cursor.sh)、[OpenCode](https://opencode.ai) 以及任何支持 [Agent Skills](https://github.com/vercel-labs/add-skill) 标准的 AI 助手。
+<br/>
 
-[安装](#安装) • [快速开始](#快速开始) • [命令](#命令) • [为什么选择 nblm？](#为什么选择-nblm)
+[安装](#安装) · [快速开始](#快速开始) · [命令](#命令) · [架构](#架构)
 
 </div>
-
----
-
-## 为什么选择 nblm？
-
-nblm 将三个优秀项目的精华整合为一体：
-
-| 对比 | 优势 |
-|------|------|
-| **[notebooklm-skill](https://github.com/PleasePrompto/notebooklm-skill)** | 无需每次请求都启动浏览器自动化 — 节省时间和 token |
-| **[zlibrary-to-notebooklm](https://github.com/zstmfhy/zlibrary-to-notebooklm)** | 可扩展的插件架构 — 今天支持 Z-Library，未来支持更多来源 |
-| **[notebooklm-py](https://github.com/teng-lin/notebooklm-py)** | 添加 agent-browser 守护进程，适应 NotebookLM UI 变化，支持非 API 来源的无头访问 |
-
-**结果：** 最简洁的命令行体验，在任何提示词中都能无缝工作。
 
 ---
 

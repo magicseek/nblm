@@ -4,47 +4,29 @@
 
 # nblm
 
-**Query Google NotebookLM directly from AI coding agents for source-grounded, citation-backed answers**
+### Your AI Coding Agent's Gateway to NotebookLM
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
 [![Agent Skill](https://img.shields.io/badge/Agent-Skill-purple.svg)](https://github.com/vercel-labs/add-skill)
 [![License](https://img.shields.io/github/license/magicseek/nblm)](LICENSE)
 
-🧠 **Bridge your AI coding agent to the world's smartest research assistant**
 <br/>
-<sub>NotebookLM's Gemini-powered Q&A meets your development workflow</sub>
 
-⚡ **Natural language notebook control — no context switching**
+🧠 **Zero Hallucinations** — Answers grounded exclusively in your documents
 <br/>
-<sub>Ask questions, upload docs, generate podcasts & slides — all without leaving your editor</sub>
-
-🔌 **Extensible source pipeline — Z-Library today, anything tomorrow**
+⚡ **Zero Context Switching** — Ask, upload, generate podcasts & slides from your editor
 <br/>
-<sub>Plugin architecture ready for arXiv, Notion, Confluence, and beyond</sub>
+🔌 **Infinite Sources** — Z-Library today, arXiv / Notion / Confluence tomorrow
 
----
+<br/>
 
-> Drastically reduced hallucinations — answers come exclusively from your uploaded documents.
+<sub>Works with **Claude Code** · **Cursor** · **Windsurf** · **Codex** · and any [Agent Skills](https://github.com/vercel-labs/add-skill) compatible agent</sub>
 
-Works with [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Cursor](https://cursor.sh), [OpenCode](https://opencode.ai), and any agent supporting the [Agent Skills](https://github.com/vercel-labs/add-skill) standard.
+<br/>
 
-[Installation](#installation) • [Quick Start](#quick-start) • [Commands](#commands) • [Why nblm?](#why-nblm)
+[Installation](#installation) · [Quick Start](#quick-start) · [Commands](#commands) · [Architecture](#architecture)
 
 </div>
-
----
-
-## Why nblm?
-
-nblm combines the best of three excellent projects into one streamlined experience:
-
-| vs. | Advantage |
-|-----|-----------|
-| **[notebooklm-skill](https://github.com/PleasePrompto/notebooklm-skill)** | No per-request browser automation — saves time and tokens |
-| **[zlibrary-to-notebooklm](https://github.com/zstmfhy/zlibrary-to-notebooklm)** | Extensible plugin architecture — Z-Library today, more sources tomorrow |
-| **[notebooklm-py](https://github.com/teng-lin/notebooklm-py)** | Adds agent-browser daemon for resilience to NotebookLM UI changes and headless access to non-API sources |
-
-**The result:** The simplest command-line experience that works seamlessly in any prompt.
 
 ---
 
