@@ -15,15 +15,27 @@ from pathlib import Path
 
 AGENT_PROCESS_HINTS = ("codex", "claude", "claude-code", "claude_code")
 IGNORED_PROCESS_NAMES = {
+    # Unix shells
     "bash",
     "dash",
     "fish",
     "sh",
     "zsh",
+    # Windows shells
+    "cmd",
+    "cmd.exe",
+    "powershell",
+    "powershell.exe",
+    "pwsh",
+    "pwsh.exe",
+    # Interpreters
     "python",
     "python3",
+    "python.exe",
     "node",
+    "node.exe",
     "npm",
+    "npm.cmd",
 }
 
 # Scripts that skip auth pre-check
@@ -209,6 +221,13 @@ def ensure_pip_deps():
         print("✅ Python dependencies installed")
 
 
+def _get_npm_command():
+    """Get the npm command for the current platform."""
+    if os.name == 'nt':  # Windows
+        return "npm.cmd"
+    return "npm"
+
+
 def ensure_node_deps():
     """Ensure Node.js dependencies are installed"""
     skill_dir = Path(__file__).parent.parent
@@ -220,9 +239,10 @@ def ensure_node_deps():
 
     if not node_modules.exists():
         print("📦 Installing agent-browser...")
+        npm_cmd = _get_npm_command()
         try:
             result = subprocess.run(
-                ["npm", "install"],
+                [npm_cmd, "install"],
                 cwd=str(skill_dir),
                 capture_output=True,
                 text=True,

@@ -11,6 +11,13 @@ import venv
 from pathlib import Path
 
 
+def _get_npm_command():
+    """Get the npm command for the current platform."""
+    if os.name == 'nt':  # Windows
+        return "npm.cmd"
+    return "npm"
+
+
 class SkillEnvironment:
     """Manages skill-specific virtual environment"""
 
@@ -71,9 +78,10 @@ class SkillEnvironment:
                 package_json = self.skill_dir / "package.json"
                 if package_json.exists():
                     print("📦 Installing Node.js dependencies...")
+                    npm_cmd = _get_npm_command()
                     try:
                         subprocess.run(
-                            ["npm", "install"],
+                            [npm_cmd, "install"],
                             check=True,
                             capture_output=True,
                             text=True,
@@ -83,7 +91,7 @@ class SkillEnvironment:
                         print("🌐 Installing Playwright browsers...")
                         try:
                             subprocess.run(
-                                ["npm", "run", "install-browsers"],
+                                [npm_cmd, "run", "install-browsers"],
                                 check=True,
                                 capture_output=True,
                                 text=True,
