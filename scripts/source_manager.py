@@ -29,66 +29,68 @@ def _prompt_notebook_choice(library: NotebookLibrary, file_title: str) -> Option
     """
     active = library.get_active_notebook()
 
-    print("\n📁 No notebook specified. Choose an option:", file=sys.stderr)
-    print(file=sys.stderr)
+    print("\n📁 No notebook specified. Choose an option:")
+    print()
 
     if active:
         active_name = active.get("name", "Unnamed")
         active_id = active.get("id", "")
-        print(f"  [1] Upload to active notebook: \"{active_name}\"", file=sys.stderr)
-        print(f"  [2] Create new notebook: \"{file_title}\"", file=sys.stderr)
-        print(file=sys.stderr)
+        print(f"  [1] Upload to active notebook: \"{active_name}\"")
+        print(f"  [2] Create new notebook: \"{file_title}\"")
+        print()
+        sys.stdout.flush()
 
         while True:
             try:
                 choice = input("Enter choice (1 or 2): ").strip()
                 if choice == "1":
-                    print(f"\n✓ Using active notebook: {active_name}", file=sys.stderr)
+                    print(f"\n✓ Using active notebook: {active_name}")
                     return active_id
                 elif choice == "2":
-                    print(f"\n✓ Creating new notebook: {file_title}", file=sys.stderr)
+                    print(f"\n✓ Creating new notebook: {file_title}")
                     return None
                 else:
-                    print("Please enter 1 or 2", file=sys.stderr)
+                    print("Please enter 1 or 2")
             except (EOFError, KeyboardInterrupt):
-                print("\n\nCancelled.", file=sys.stderr)
+                print("\n\nCancelled.")
                 sys.exit(130)
     else:
         # No active notebook - list available notebooks
         notebooks = library.list_notebooks()
 
         if notebooks:
-            print("  [1] Create new notebook", file=sys.stderr)
-            print("  [2] Choose from existing notebooks:", file=sys.stderr)
+            print("  [1] Create new notebook")
+            print("  [2] Choose from existing notebooks:")
             for i, nb in enumerate(notebooks[:5], start=1):  # Show up to 5
-                print(f"      [{i+1}] {nb.get('name', 'Unnamed')}", file=sys.stderr)
+                print(f"      [{i+1}] {nb.get('name', 'Unnamed')}")
             if len(notebooks) > 5:
-                print(f"      ... and {len(notebooks) - 5} more", file=sys.stderr)
-            print(file=sys.stderr)
+                print(f"      ... and {len(notebooks) - 5} more")
+            print()
+            sys.stdout.flush()
 
             while True:
                 try:
                     choice = input("Enter choice (1 for new, or notebook number): ").strip()
                     if choice == "1":
-                        print(f"\n✓ Creating new notebook: {file_title}", file=sys.stderr)
+                        print(f"\n✓ Creating new notebook: {file_title}")
                         return None
                     elif choice.isdigit():
                         idx = int(choice) - 2  # Offset for "Create new" option
                         if 0 <= idx < len(notebooks):
                             selected = notebooks[idx]
-                            print(f"\n✓ Using notebook: {selected.get('name', 'Unnamed')}", file=sys.stderr)
+                            print(f"\n✓ Using notebook: {selected.get('name', 'Unnamed')}")
                             return selected.get("id")
                         else:
-                            print(f"Please enter a number between 1 and {len(notebooks) + 1}", file=sys.stderr)
+                            print(f"Please enter a number between 1 and {len(notebooks) + 1}")
                     else:
-                        print("Please enter a valid number", file=sys.stderr)
+                        print("Please enter a valid number")
                 except (EOFError, KeyboardInterrupt):
-                    print("\n\nCancelled.", file=sys.stderr)
+                    print("\n\nCancelled.")
                     sys.exit(130)
         else:
-            print(f"  No existing notebooks found.", file=sys.stderr)
-            print(f"  Creating new notebook: \"{file_title}\"", file=sys.stderr)
-            print(file=sys.stderr)
+            print(f"  No existing notebooks found.")
+            print(f"  Creating new notebook: \"{file_title}\"")
+            print()
             return None
 
 
