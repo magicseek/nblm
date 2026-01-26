@@ -1,5 +1,7 @@
 <div align="center">
 
+**English** | [中文](README.zh-CN.md)
+
 # nblm
 
 **Query Google NotebookLM directly from AI coding agents for source-grounded, citation-backed answers**
