@@ -4,6 +4,7 @@ Universal runner for NotebookLM skill scripts
 Ensures all scripts run with the correct virtual environment
 """
 
+import hashlib
 import json
 import os
 import sys
@@ -143,6 +144,50 @@ def ensure_venv():
     return get_venv_python()
 
 
+def _get_requirements_hash(requirements_file: Path) -> str:
+    """Compute SHA256 hash of requirements.txt"""
+    if not requirements_file.exists():
+        return ""
+    content = requirements_file.read_bytes()
+    return hashlib.sha256(content).hexdigest()
+
+
+def ensure_pip_deps():
+    """Ensure pip dependencies are installed and up-to-date"""
+    skill_dir = Path(__file__).parent.parent
+    venv_dir = skill_dir / ".venv"
+    requirements_file = skill_dir / "requirements.txt"
+    hash_file = venv_dir / ".requirements.hash"
+
+    if not requirements_file.exists():
+        return  # No requirements file
+
+    current_hash = _get_requirements_hash(requirements_file)
+
+    # Check if hash matches
+    if hash_file.exists():
+        stored_hash = hash_file.read_text().strip()
+        if stored_hash == current_hash:
+            return  # Dependencies up-to-date
+
+    # Install/update dependencies
+    print("📦 Installing Python dependencies...")
+    venv_python = get_venv_python()
+    result = subprocess.run(
+        [str(venv_python), "-m", "pip", "install", "-r", str(requirements_file), "--quiet"],
+        capture_output=True,
+        text=True
+    )
+
+    if result.returncode != 0:
+        print(f"⚠️ pip install failed: {result.stderr}")
+        print("   Try running: pip install -r requirements.txt")
+    else:
+        # Save hash on success
+        hash_file.write_text(current_hash)
+        print("✅ Python dependencies installed")
+
+
 def ensure_node_deps():
     """Ensure Node.js dependencies are installed"""
     skill_dir = Path(__file__).parent.parent
@@ -261,6 +306,9 @@ def main():
         else:
             print("✅ Python environment ready")
 
+        # Check pip dependencies
+        ensure_pip_deps()
+
         # Check Node.js deps
         node_modules = skill_dir / "node_modules"
         if not node_modules.exists():
@@ -307,6 +355,7 @@ def main():
 
     # Ensure venv exists and get Python executable
     venv_python = ensure_venv()
+    ensure_pip_deps()
     ensure_node_deps()
     ensure_owner_pid_env()
 
