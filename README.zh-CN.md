@@ -10,6 +10,20 @@
 [![Agent Skill](https://img.shields.io/badge/Agent-Skill-purple.svg)](https://github.com/vercel-labs/add-skill)
 [![License](https://img.shields.io/github/license/magicseek/nblm)](LICENSE)
 
+🧠 **将你的 AI 编程助手连接到最智能的研究助理**
+<br/>
+<sub>NotebookLM 的 Gemini 问答能力与你的开发工作流完美融合</sub>
+
+⚡ **自然语言控制笔记本 — 无需切换上下文**
+<br/>
+<sub>提问、上传文档、生成播客和幻灯片 — 全程不离开编辑器</sub>
+
+🔌 **可扩展的数据源管道 — 今天是 Z-Library，明天是无限可能**
+<br/>
+<sub>插件架构已为 arXiv、Notion、Confluence 等做好准备</sub>
+
+---
+
 > 大幅减少幻觉 — 答案完全来自你上传的文档。
 
 支持 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)、[Cursor](https://cursor.sh)、[OpenCode](https://opencode.ai) 以及任何支持 [Agent Skills](https://github.com/vercel-labs/add-skill) 标准的 AI 助手。

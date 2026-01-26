@@ -10,6 +10,20 @@
 [![Agent Skill](https://img.shields.io/badge/Agent-Skill-purple.svg)](https://github.com/vercel-labs/add-skill)
 [![License](https://img.shields.io/github/license/magicseek/nblm)](LICENSE)
 
+🧠 **Bridge your AI coding agent to the world's smartest research assistant**
+<br/>
+<sub>NotebookLM's Gemini-powered Q&A meets your development workflow</sub>
+
+⚡ **Natural language notebook control — no context switching**
+<br/>
+<sub>Ask questions, upload docs, generate podcasts & slides — all without leaving your editor</sub>
+
+🔌 **Extensible source pipeline — Z-Library today, anything tomorrow**
+<br/>
+<sub>Plugin architecture ready for arXiv, Notion, Confluence, and beyond</sub>
+
+---
+
 > Drastically reduced hallucinations — answers come exclusively from your uploaded documents.
 
 Works with [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Cursor](https://cursor.sh), [OpenCode](https://opencode.ai), and any agent supporting the [Agent Skills](https://github.com/vercel-labs/add-skill) standard.
