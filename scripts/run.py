@@ -31,6 +31,7 @@ SKIP_AUTH_CHECK = {
     "auth_manager.py",      # Handles its own auth
     "cleanup_manager.py",   # Cleanup doesn't need auth
     "setup_environment.py", # Setup script
+    "init_platform.py",     # Platform initialization
 }
 
 # Timeouts for long-running operations (in seconds)
@@ -329,6 +330,17 @@ def ensure_owner_pid_env():
 
 def main():
     """Main runner"""
+    # Handle init command for platform initialization
+    if len(sys.argv) >= 2 and sys.argv[1] == "init":
+        skill_dir = Path(__file__).parent.parent
+        init_script = skill_dir / "scripts" / "init_platform.py"
+
+        # Pass remaining args to init_platform.py
+        init_args = sys.argv[2:]
+        cmd = [sys.executable, str(init_script)] + init_args
+        result = subprocess.run(cmd)
+        sys.exit(result.returncode)
+
     # Handle --check-deps flag for pre-flight dependency check
     if len(sys.argv) >= 2 and sys.argv[1] == "--check-deps":
         print("🔍 Checking dependencies...")
