@@ -34,9 +34,9 @@ SKIP_AUTH_CHECK = {
 }
 
 # Timeouts for long-running operations (in seconds)
-TIMEOUT_VENV_SETUP = 300      # 5 minutes
-TIMEOUT_PIP_INSTALL = 300     # 5 minutes
-TIMEOUT_NPM_INSTALL = 300     # 5 minutes
+TIMEOUT_VENV_SETUP = 600      # 10 minutes
+TIMEOUT_PIP_INSTALL = 600     # 10 minutes
+TIMEOUT_NPM_INSTALL = 600     # 10 minutes
 TIMEOUT_AUTH_SETUP = 600      # 10 minutes (user interaction)
 
 
