@@ -60,6 +60,29 @@ npx add-skill magicseek/nblm -a claude-code -a cursor -a opencode
 git clone https://github.com/magicseek/nblm ~/.claude/skills/nblm
 ```
 
+### Alternative: Platform-specific initialization
+
+If symlinks created by `add-skill` don't work well in your environment (e.g., Cursor), you can generate platform-specific files directly:
+
+```bash
+# Clone the repo
+git clone https://github.com/magicseek/nblm ~/.nblm
+
+# Initialize for your AI assistant (run from your project directory)
+python ~/.nblm/scripts/run.py init --ai cursor       # Cursor
+python ~/.nblm/scripts/run.py init --ai claude       # Claude Code
+python ~/.nblm/scripts/run.py init --ai codex        # Codex CLI
+python ~/.nblm/scripts/run.py init --ai antigravity  # Antigravity
+python ~/.nblm/scripts/run.py init --ai windsurf     # Windsurf
+python ~/.nblm/scripts/run.py init --ai copilot      # GitHub Copilot
+python ~/.nblm/scripts/run.py init --ai all          # All platforms
+
+# List available platforms
+python ~/.nblm/scripts/run.py init --list
+```
+
+This generates the appropriate skill/command files in your project directory (e.g., `.cursor/commands/nblm.md`).
+
 ### First Run
 
 On first use, nblm automatically:
