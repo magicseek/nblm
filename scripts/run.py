@@ -33,6 +33,12 @@ SKIP_AUTH_CHECK = {
     "setup_environment.py", # Setup script
 }
 
+# Timeouts for long-running operations (in seconds)
+TIMEOUT_VENV_SETUP = 300      # 5 minutes
+TIMEOUT_PIP_INSTALL = 300     # 5 minutes
+TIMEOUT_NPM_INSTALL = 300     # 5 minutes
+TIMEOUT_AUTH_SETUP = 600      # 10 minutes (user interaction)
+
 
 def _get_process_info(pid: int):
     """Return (ppid, command) for a PID, or None on failure."""
@@ -134,7 +140,15 @@ def ensure_venv():
         print("   This may take a minute...")
 
         # Run setup with system Python
-        result = subprocess.run([sys.executable, str(setup_script)])
+        try:
+            result = subprocess.run(
+                [sys.executable, str(setup_script)],
+                timeout=TIMEOUT_VENV_SETUP
+            )
+        except subprocess.TimeoutExpired:
+            print(f"❌ Venv setup timed out after {TIMEOUT_VENV_SETUP}s")
+            sys.exit(1)
+
         if result.returncode != 0:
             print("❌ Failed to set up environment")
             sys.exit(1)
@@ -173,11 +187,17 @@ def ensure_pip_deps():
     # Install/update dependencies
     print("📦 Installing Python dependencies...")
     venv_python = get_venv_python()
-    result = subprocess.run(
-        [str(venv_python), "-m", "pip", "install", "-r", str(requirements_file), "--quiet"],
-        capture_output=True,
-        text=True
-    )
+    try:
+        result = subprocess.run(
+            [str(venv_python), "-m", "pip", "install", "-r", str(requirements_file), "--quiet"],
+            capture_output=True,
+            text=True,
+            timeout=TIMEOUT_PIP_INSTALL
+        )
+    except subprocess.TimeoutExpired:
+        print(f"⚠️ pip install timed out after {TIMEOUT_PIP_INSTALL}s")
+        print("   Try running manually: pip install -r requirements.txt")
+        return
 
     if result.returncode != 0:
         print(f"⚠️ pip install failed: {result.stderr}")
@@ -199,12 +219,19 @@ def ensure_node_deps():
 
     if not node_modules.exists():
         print("📦 Installing agent-browser...")
-        result = subprocess.run(
-            ["npm", "install"],
-            cwd=str(skill_dir),
-            capture_output=True,
-            text=True
-        )
+        try:
+            result = subprocess.run(
+                ["npm", "install"],
+                cwd=str(skill_dir),
+                capture_output=True,
+                text=True,
+                timeout=TIMEOUT_NPM_INSTALL
+            )
+        except subprocess.TimeoutExpired:
+            print(f"⚠️ npm install timed out after {TIMEOUT_NPM_INSTALL}s")
+            print("   Please run manually: npm install")
+            return
+
         if result.returncode != 0:
             print(f"⚠️ npm install failed: {result.stderr}")
             print("   Please ensure Node.js and npm are installed")
@@ -216,13 +243,22 @@ def _prompt_auth_setup():
     """Trigger interactive auth setup, return True on success."""
     print("🔐 Google authentication required. Opening browser...")
     print("   Please complete login in the browser window.")
+    print(f"   (Timeout: {TIMEOUT_AUTH_SETUP // 60} minutes)")
     print()
 
     venv_python = get_venv_python()
     skill_dir = Path(__file__).parent.parent
     auth_script = skill_dir / "scripts" / "auth_manager.py"
 
-    result = subprocess.run([str(venv_python), str(auth_script), "setup", "--service", "google"])
+    try:
+        result = subprocess.run(
+            [str(venv_python), str(auth_script), "setup", "--service", "google"],
+            timeout=TIMEOUT_AUTH_SETUP
+        )
+    except subprocess.TimeoutExpired:
+        print(f"❌ Authentication timed out after {TIMEOUT_AUTH_SETUP // 60} minutes.")
+        print("   Please try again: python scripts/run.py auth_manager.py setup")
+        sys.exit(1)
 
     if result.returncode != 0:
         print("❌ Authentication failed. Cannot proceed.")
