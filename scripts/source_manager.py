@@ -21,6 +21,77 @@ from zlibrary.downloader import ZLibraryDownloader
 from zlibrary import epub_converter
 
 
+def _prompt_notebook_choice(library: NotebookLibrary, file_title: str) -> Optional[str]:
+    """Prompt user to choose between active notebook or create new.
+
+    Returns:
+        notebook_id if user chooses existing notebook, None if user wants to create new.
+    """
+    active = library.get_active_notebook()
+
+    print("\n📁 No notebook specified. Choose an option:", file=sys.stderr)
+    print(file=sys.stderr)
+
+    if active:
+        active_name = active.get("name", "Unnamed")
+        active_id = active.get("id", "")
+        print(f"  [1] Upload to active notebook: \"{active_name}\"", file=sys.stderr)
+        print(f"  [2] Create new notebook: \"{file_title}\"", file=sys.stderr)
+        print(file=sys.stderr)
+
+        while True:
+            try:
+                choice = input("Enter choice (1 or 2): ").strip()
+                if choice == "1":
+                    print(f"\n✓ Using active notebook: {active_name}", file=sys.stderr)
+                    return active_id
+                elif choice == "2":
+                    print(f"\n✓ Creating new notebook: {file_title}", file=sys.stderr)
+                    return None
+                else:
+                    print("Please enter 1 or 2", file=sys.stderr)
+            except (EOFError, KeyboardInterrupt):
+                print("\n\nCancelled.", file=sys.stderr)
+                sys.exit(130)
+    else:
+        # No active notebook - list available notebooks
+        notebooks = library.list_notebooks()
+
+        if notebooks:
+            print("  [1] Create new notebook", file=sys.stderr)
+            print("  [2] Choose from existing notebooks:", file=sys.stderr)
+            for i, nb in enumerate(notebooks[:5], start=1):  # Show up to 5
+                print(f"      [{i+1}] {nb.get('name', 'Unnamed')}", file=sys.stderr)
+            if len(notebooks) > 5:
+                print(f"      ... and {len(notebooks) - 5} more", file=sys.stderr)
+            print(file=sys.stderr)
+
+            while True:
+                try:
+                    choice = input("Enter choice (1 for new, or notebook number): ").strip()
+                    if choice == "1":
+                        print(f"\n✓ Creating new notebook: {file_title}", file=sys.stderr)
+                        return None
+                    elif choice.isdigit():
+                        idx = int(choice) - 2  # Offset for "Create new" option
+                        if 0 <= idx < len(notebooks):
+                            selected = notebooks[idx]
+                            print(f"\n✓ Using notebook: {selected.get('name', 'Unnamed')}", file=sys.stderr)
+                            return selected.get("id")
+                        else:
+                            print(f"Please enter a number between 1 and {len(notebooks) + 1}", file=sys.stderr)
+                    else:
+                        print("Please enter a valid number", file=sys.stderr)
+                except (EOFError, KeyboardInterrupt):
+                    print("\n\nCancelled.", file=sys.stderr)
+                    sys.exit(130)
+        else:
+            print(f"  No existing notebooks found.", file=sys.stderr)
+            print(f"  Creating new notebook: \"{file_title}\"", file=sys.stderr)
+            print(file=sys.stderr)
+            return None
+
+
 class SourceManager:
     """Unified source ingestion for NotebookLM."""
 
@@ -103,6 +174,7 @@ class SourceManager:
         file_path: Union[Path, List[Path]],
         notebook_id: Optional[str] = None,
         source_label: str = "upload",
+        interactive: bool = True,
     ) -> dict:
         """Upload local file(s) to NotebookLM."""
         paths = file_path if isinstance(file_path, list) else [file_path]
@@ -122,6 +194,14 @@ class SourceManager:
                 "error": "Google authentication required",
                 "recovery": "Run: python scripts/run.py auth_manager.py setup",
             }
+
+        # Prompt user if no notebook specified and interactive mode
+        if not notebook_id and interactive:
+            library = NotebookLibrary()
+            chosen_id = _prompt_notebook_choice(library, title)
+            if chosen_id:
+                notebook_id = chosen_id
+                resolved_notebook_id = notebook_id
 
         async with NotebookLMWrapper() as wrapper:
             if not notebook_id:
@@ -212,7 +292,7 @@ class SourceManager:
             "title": title
         }
 
-    async def add_from_zlibrary(self, url: str, notebook_id: Optional[str] = None) -> dict:
+    async def add_from_zlibrary(self, url: str, notebook_id: Optional[str] = None, interactive: bool = True) -> dict:
         """Download from Z-Library and upload to NotebookLM."""
         if not self.auth.is_authenticated("zlibrary"):
             raise RuntimeError(
@@ -233,14 +313,14 @@ class SourceManager:
         if file_format == "epub" or Path(file_path).suffix.lower() == ".epub":
             output_path = Path(tempfile.gettempdir()) / f"{Path(file_path).stem}.md"
             converted = self.converter.convert_epub_to_markdown(file_path, output_path)
-            return await self.add_from_file(converted, notebook_id, source_label="zlibrary")
+            return await self.add_from_file(converted, notebook_id, source_label="zlibrary", interactive=interactive)
 
-        return await self.add_from_file(Path(file_path), notebook_id, source_label="zlibrary")
+        return await self.add_from_file(Path(file_path), notebook_id, source_label="zlibrary", interactive=interactive)
 
-    async def add_from_url(self, url: str, notebook_id: Optional[str] = None) -> dict:
+    async def add_from_url(self, url: str, notebook_id: Optional[str] = None, interactive: bool = True) -> dict:
         """Smart routing based on URL pattern."""
         if self._is_zlibrary_url(url):
-            return await self.add_from_zlibrary(url, notebook_id)
+            return await self.add_from_zlibrary(url, notebook_id, interactive=interactive)
         raise ValueError(f"Unsupported URL: {url}")
 
 
