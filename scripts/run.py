@@ -219,6 +219,53 @@ def ensure_pip_deps():
         # Save hash on success
         hash_file.write_text(current_hash)
         print("✅ Python dependencies installed")
+        # Install Patchright browser if patchright was installed
+        _ensure_patchright_browser(venv_python)
+
+
+def _ensure_patchright_browser(venv_python: Path):
+    """Ensure Patchright browser is installed for Google auth."""
+    skill_dir = Path(__file__).parent.parent
+    patchright_marker = skill_dir / ".venv" / ".patchright-browser-installed"
+
+    # Skip if already installed
+    if patchright_marker.exists():
+        return
+
+    # Check if patchright is installed
+    try:
+        result = subprocess.run(
+            [str(venv_python), "-c", "import patchright"],
+            capture_output=True,
+            timeout=10
+        )
+        if result.returncode != 0:
+            return  # Patchright not installed, skip
+    except Exception:
+        return
+
+    # Install Patchright browser
+    print("📦 Installing Patchright browser for Google auth...")
+    try:
+        patchright_cmd = skill_dir / ".venv" / "bin" / "patchright"
+        if os.name == 'nt':
+            patchright_cmd = skill_dir / ".venv" / "Scripts" / "patchright.exe"
+
+        result = subprocess.run(
+            [str(patchright_cmd), "install", "chromium"],
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minutes for browser download
+        )
+        if result.returncode == 0:
+            patchright_marker.write_text("installed")
+            print("✅ Patchright browser installed")
+        else:
+            print(f"⚠️ Patchright browser install failed: {result.stderr}")
+    except subprocess.TimeoutExpired:
+        print("⚠️ Patchright browser install timed out")
+    except Exception as e:
+        print(f"⚠️ Patchright browser install error: {e}")
 
 
 def _get_npm_command():
