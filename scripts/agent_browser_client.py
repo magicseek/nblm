@@ -60,6 +60,7 @@ class AgentBrowserClient:
     def connect(self) -> bool:
         """Connect to daemon, starting it if necessary"""
         daemon_running = self._daemon_is_running()
+
         if self.headed and daemon_running:
             self._stop_daemon()
             daemon_running = False
@@ -123,8 +124,13 @@ class AgentBrowserClient:
         return True
 
     def launch(self, headless: bool = True) -> Dict[str, Any]:
-        """Launch browser in daemon"""
-        return self._send_command("launch", {"headless": headless})
+        """Launch browser in daemon
+
+        Args:
+            headless: Run in headless mode
+        """
+        params = {"headless": headless}
+        return self._send_command("launch", params)
 
     def _daemon_is_running(self) -> bool:
         """Check if daemon socket exists and is responsive"""
