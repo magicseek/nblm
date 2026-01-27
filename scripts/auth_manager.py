@@ -266,6 +266,35 @@ class AuthManager:
 
     def setup(self, service: str = "google"):
         """Interactive authentication setup for specified service"""
+        # Use Patchright for Google auth (bypasses "browser not secure" check)
+        if service == "google":
+            return self._setup_google_with_patchright()
+
+        # For other services, use agent-browser
+        return self._setup_with_agent_browser(service)
+
+    def _setup_google_with_patchright(self):
+        """Setup Google auth using Patchright (anti-detection browser)"""
+        try:
+            from patchright_auth import authenticate_with_patchright
+        except ImportError as e:
+            print(f"⚠️ Patchright auth module not found ({e}), falling back to agent-browser")
+            return self._setup_with_agent_browser("google")
+        except Exception as e:
+            print(f"⚠️ Patchright import error ({e}), falling back to agent-browser")
+            return self._setup_with_agent_browser("google")
+
+        try:
+            success = authenticate_with_patchright()
+            if success:
+                self._ensure_storage_state_symlink()
+            return success
+        except Exception as e:
+            print(f"⚠️ Patchright auth failed ({e}), falling back to agent-browser")
+            return self._setup_with_agent_browser("google")
+
+    def _setup_with_agent_browser(self, service: str):
+        """Original setup using agent-browser"""
         service_config = self._get_service_config(service)
         print(f"🔐 Setting up {service} authentication...")
         print("   A browser window will open for you to log in.")

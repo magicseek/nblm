@@ -14,3 +14,6 @@ pypdf>=4.0.0
 
 # NotebookLM API client
 notebooklm-py>=0.1.0
+
+# Patchright for Google auth (anti-detection Playwright fork)
+patchright>=1.50.0
