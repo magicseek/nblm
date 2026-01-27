@@ -10,9 +10,35 @@ import json
 import argparse
 import re
 import sys
+import unicodedata
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+
+
+def _normalize_id(text: str) -> str:
+    """
+    Normalize text for use as notebook ID.
+    Converts smart quotes to ASCII, normalizes Unicode, lowercases, replaces spaces.
+    """
+    # Unicode smart quotes to ASCII
+    quote_map = {
+        '\u2018': "'",  # LEFT SINGLE QUOTATION MARK
+        '\u2019': "'",  # RIGHT SINGLE QUOTATION MARK
+        '\u201c': '"',  # LEFT DOUBLE QUOTATION MARK
+        '\u201d': '"',  # RIGHT DOUBLE QUOTATION MARK
+        '\u2013': '-',  # EN DASH
+        '\u2014': '-',  # EM DASH
+        '\u2026': '...',  # HORIZONTAL ELLIPSIS
+    }
+    for unicode_char, ascii_char in quote_map.items():
+        text = text.replace(unicode_char, ascii_char)
+
+    # Normalize Unicode to ASCII-compatible form
+    text = unicodedata.normalize('NFKC', text)
+
+    # Lowercase and replace spaces/underscores
+    return text.lower().replace(' ', '-').replace('_', '-')
 
 
 class NotebookLibrary:
@@ -86,8 +112,8 @@ class NotebookLibrary:
         Returns:
             The created notebook object
         """
-        # Generate ID from name
-        notebook_id = name.lower().replace(' ', '-').replace('_', '-')
+        # Generate ID from name (normalizes Unicode characters)
+        notebook_id = _normalize_id(name)
 
         # Check for duplicates
         if notebook_id in self.notebooks:
@@ -131,18 +157,31 @@ class NotebookLibrary:
         Returns:
             True if removed, False if not found
         """
+        # Normalize input ID for matching
+        normalized_input = _normalize_id(notebook_id)
+
+        # Find matching ID
+        match_id = None
         if notebook_id in self.notebooks:
-            del self.notebooks[notebook_id]
+            match_id = notebook_id
+        else:
+            for stored_id in self.notebooks:
+                if _normalize_id(stored_id) == normalized_input:
+                    match_id = stored_id
+                    break
+
+        if match_id:
+            del self.notebooks[match_id]
 
             # Clear active if it was removed
-            if self.active_notebook_id == notebook_id:
+            if self.active_notebook_id == match_id:
                 self.active_notebook_id = None
                 # Set new active if there are other notebooks
                 if self.notebooks:
                     self.active_notebook_id = list(self.notebooks.keys())[0]
 
             self._save_library()
-            print(f"✅ Removed notebook: {notebook_id}")
+            print(f"✅ Removed notebook: {match_id}")
             return True
 
         print(f"⚠️ Notebook not found: {notebook_id}")
@@ -242,13 +281,27 @@ class NotebookLibrary:
         Returns:
             The activated notebook
         """
-        if notebook_id not in self.notebooks:
+        # Normalize input ID for matching
+        normalized_input = _normalize_id(notebook_id)
+
+        # Try exact match first, then normalized match
+        match_id = None
+        if notebook_id in self.notebooks:
+            match_id = notebook_id
+        else:
+            # Find by normalized ID
+            for stored_id in self.notebooks:
+                if _normalize_id(stored_id) == normalized_input:
+                    match_id = stored_id
+                    break
+
+        if match_id is None:
             raise ValueError(f"Notebook not found: {notebook_id}")
 
-        self.active_notebook_id = notebook_id
+        self.active_notebook_id = match_id
         self._save_library()
 
-        notebook = self.notebooks[notebook_id]
+        notebook = self.notebooks[match_id]
         print(f"✅ Activated notebook: {notebook['name']}")
         return notebook
 
