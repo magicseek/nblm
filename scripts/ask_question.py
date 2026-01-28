@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 sys.path.insert(0, str(Path(__file__).parent))
 
 from auth_manager import AuthManager
+from account_manager import AccountManager
 from notebook_manager import NotebookLibrary
 from agent_browser_client import AgentBrowserClient, AgentBrowserError
 from notebooklm_wrapper import NotebookLMWrapper, NotebookLMError
@@ -244,8 +245,14 @@ def _extract_notebook_id_from_url(notebook_url: str) -> Optional[str]:
     return None
 
 
-async def ask_notebooklm_api_async(question: str, notebook_url: str) -> dict:
-    """Query NotebookLM via API."""
+async def ask_notebooklm_api_async(question: str, notebook_url: str, account_index: int = None) -> dict:
+    """Query NotebookLM via API.
+
+    Args:
+        question: The question to ask
+        notebook_url: The notebook URL
+        account_index: Optional account index to use (defaults to active)
+    """
     notebook_id = _extract_notebook_id_from_url(notebook_url)
     if not notebook_id:
         return {
@@ -258,7 +265,7 @@ async def ask_notebooklm_api_async(question: str, notebook_url: str) -> dict:
         }
 
     try:
-        async with NotebookLMWrapper() as client:
+        async with NotebookLMWrapper(account_index=account_index) as client:
             response = await client.chat(notebook_id, question)
             answer = response.get("text", "")
             return {
@@ -281,6 +288,7 @@ async def ask_notebooklm_api_async(question: str, notebook_url: str) -> dict:
 async def ask_notebooklm_async(question: str, notebook_url: str, show_browser: bool = False) -> dict:
     """Ask a question to NotebookLM - API first, browser fallback."""
     auth = AuthManager()
+    account_mgr = AccountManager()
 
     # Check authentication
     if not auth.is_authenticated("google"):
@@ -293,19 +301,36 @@ async def ask_notebooklm_async(question: str, notebook_url: str, show_browser: b
             }
         }
 
+    # Determine which account to use based on notebook
+    library = NotebookLibrary()
+    notebook_id = _extract_notebook_id_from_url(notebook_url)
+    account_index = None
+
+    # Find notebook in library to get its account
+    for nb in library.notebooks.values():
+        if notebook_id and notebook_id in nb.get('url', ''):
+            account_index = nb.get('account_index')
+            if account_index:
+                account = account_mgr.get_account_by_index(account_index)
+                if account:
+                    active = account_mgr.get_active_account()
+                    if active and active.index != account_index:
+                        print(f"📧 Notebook belongs to [{account.index}] {account.email}")
+            break
+
     print(f"💬 Asking: {question[:80]}{'...' if len(question) > 80 else ''}")
     print(f"📚 Notebook: {notebook_url[:60]}...")
 
     # Try API first (unless show_browser is explicitly requested)
     if not show_browser:
         print("🔌 Trying API...")
-        result = await ask_notebooklm_api_async(question, notebook_url)
+        result = await ask_notebooklm_api_async(question, notebook_url, account_index)
         if result["status"] == "success":
             print("✅ Got answer via API!")
             return result
         print(f"⚠️ API failed: {result['error']['message']}, falling back to browser...")
 
-    # Fall back to browser (existing browser-based logic)
+    # Fall back to browser
     return _ask_via_browser_sync(question, notebook_url, show_browser, auth)
 
 
