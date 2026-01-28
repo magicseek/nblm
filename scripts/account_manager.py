@@ -124,6 +124,79 @@ class AccountManager:
             return account.file_path
         return None
 
+    def switch_account(self, identifier: str | int) -> AccountInfo:
+        """Switch to a different account by index or email.
+
+        Args:
+            identifier: Account index (int) or email (str)
+
+        Returns:
+            The newly active AccountInfo
+
+        Raises:
+            ValueError: If account not found
+        """
+        data = self._load_index()
+        target_account = None
+
+        # Try to match by index or email
+        for acc in data["accounts"]:
+            if isinstance(identifier, int) or (isinstance(identifier, str) and identifier.isdigit()):
+                if acc["index"] == int(identifier):
+                    target_account = acc
+                    break
+            else:
+                if acc["email"].lower() == identifier.lower():
+                    target_account = acc
+                    break
+
+        if not target_account:
+            raise ValueError(f"Account not found: {identifier}")
+
+        # Update active account
+        data["active_account"] = target_account["index"]
+        self._save_index(data)
+
+        file_path = GOOGLE_AUTH_DIR / target_account["file"]
+        return AccountInfo(
+            index=target_account["index"],
+            email=target_account["email"],
+            file_path=file_path,
+            added_at=target_account.get("added_at", ""),
+        )
+
+    def get_account_by_index(self, index: int) -> Optional[AccountInfo]:
+        """Get account by index."""
+        data = self._load_index()
+        for acc in data["accounts"]:
+            if acc["index"] == index:
+                file_path = GOOGLE_AUTH_DIR / acc["file"]
+                return AccountInfo(
+                    index=acc["index"],
+                    email=acc["email"],
+                    file_path=file_path,
+                    added_at=acc.get("added_at", ""),
+                )
+        return None
+
+    def get_account_by_email(self, email: str) -> Optional[AccountInfo]:
+        """Get account by email."""
+        data = self._load_index()
+        for acc in data["accounts"]:
+            if acc["email"].lower() == email.lower():
+                file_path = GOOGLE_AUTH_DIR / acc["file"]
+                return AccountInfo(
+                    index=acc["index"],
+                    email=acc["email"],
+                    file_path=file_path,
+                    added_at=acc.get("added_at", ""),
+                )
+        return None
+
+    def account_exists(self, email: str) -> bool:
+        """Check if an account with this email already exists."""
+        return self.get_account_by_email(email) is not None
+
     def _migrate_if_needed(self) -> bool:
         """Migrate from single-account to multi-account structure if needed.
 
