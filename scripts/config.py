@@ -16,6 +16,13 @@ GOOGLE_AUTH_FILE = AUTH_DIR / "google.json"
 ZLIBRARY_AUTH_FILE = AUTH_DIR / "zlibrary.json"
 LIBRARY_FILE = DATA_DIR / "library.json"
 
+# Multi-account Google auth structure
+GOOGLE_AUTH_DIR = AUTH_DIR / "google"
+GOOGLE_AUTH_INDEX = GOOGLE_AUTH_DIR / "index.json"
+
+# Legacy path (for migration detection)
+GOOGLE_AUTH_FILE_LEGACY = AUTH_DIR / "google.json"
+
 # Set NOTEBOOKLM_HOME to use our auth directory for notebooklm-py
 # This ensures download methods find our storage_state.json
 os.environ.setdefault("NOTEBOOKLM_HOME", str(AUTH_DIR))
