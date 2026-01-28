@@ -17,7 +17,7 @@ import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 
 from config import (
     GOOGLE_AUTH_FILE,
@@ -96,30 +96,67 @@ def _save_auth_state(storage_state: Dict[str, Any]) -> None:
         json.dump(storage_state, f, indent=2)
 
 
-def authenticate_with_patchright(timeout_seconds: int = 600) -> bool:
+def _extract_email_from_page(page) -> Optional[str]:
+    """Extract the logged-in user's email from the page."""
+    try:
+        email = page.evaluate("""
+            () => {
+                // Try aria-label on account button
+                const accountBtn = document.querySelector('[aria-label*="@"]');
+                if (accountBtn) {
+                    const match = accountBtn.getAttribute('aria-label').match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}/);
+                    if (match) return match[0];
+                }
+
+                // Try data attributes
+                const elements = document.querySelectorAll('[data-email], [data-user-email]');
+                for (const el of elements) {
+                    const email = el.getAttribute('data-email') || el.getAttribute('data-user-email');
+                    if (email && email.includes('@')) return email;
+                }
+
+                // Try text content in account-related elements
+                const accountElements = document.querySelectorAll('[class*="account"], [class*="user"], [class*="profile"]');
+                for (const el of accountElements) {
+                    const match = el.textContent.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}/);
+                    if (match) return match[0];
+                }
+
+                return null;
+            }
+        """)
+        return email
+    except Exception:
+        return None
+
+
+def authenticate_with_patchright(timeout_seconds: int = 600) -> tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
     """
     Perform Google authentication using Patchright.
 
     Opens a real Chrome browser for user to log in manually.
-    Waits for successful authentication, then saves session.
+    Waits for successful authentication, then extracts session data.
 
     Args:
         timeout_seconds: Maximum time to wait for user to complete login
 
     Returns:
-        True if authentication succeeded, False otherwise
+        Tuple of (success, email, storage_state):
+        - success: True if authentication succeeded
+        - email: The authenticated user's email address (if extractable)
+        - storage_state: Browser storage state dict for saving credentials
     """
     try:
         from patchright.sync_api import sync_playwright
     except ImportError:
         print("❌ Patchright not installed. Run: pip install patchright && patchright install chromium")
-        return False
+        return False, None, None
 
     # Find real Chrome executable
     chrome_path = _find_chrome_executable()
     if not chrome_path:
         print("❌ Google Chrome not found. Please install Chrome.")
-        return False
+        return False, None, None
 
     print("🔐 Opening Chrome for Google authentication...")
     print(f"   Using: {chrome_path}")
@@ -186,21 +223,20 @@ def authenticate_with_patchright(timeout_seconds: int = 600) -> bool:
         if authenticated:
             print("✅ Authentication successful!")
 
-            # Extract and save storage state
+            # Extract email from page
+            email = _extract_email_from_page(page)
+            if email:
+                print(f"   ✓ Logged in as: {email}")
+
+            # Extract storage state (caller will save)
             storage_state = _extract_storage_state(context)
-            _save_auth_state(storage_state)
-
-            print(f"   ✓ Saved auth state to {GOOGLE_AUTH_FILE.name}")
-
-            # Also save Playwright-compatible storage state for notebooklm-py
-            storage_state_file = SKILL_DIR / "data" / "auth" / "storage_state.json"
-            context.storage_state(path=str(storage_state_file))
-            print(f"   ✓ Saved storage_state.json for API client")
         else:
             print("❌ Authentication timed out")
+            email = None
+            storage_state = None
 
         context.close()
-        return authenticated
+        return authenticated, email, storage_state
 
 
 def clear_patchright_profile() -> bool:
@@ -220,5 +256,10 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "clear":
         clear_patchright_profile()
     else:
-        success = authenticate_with_patchright()
+        success, email, storage_state = authenticate_with_patchright()
+        if success:
+            print(f"Email: {email}")
+            # Save for backward compatibility when run standalone
+            if storage_state:
+                _save_auth_state(storage_state)
         sys.exit(0 if success else 1)
