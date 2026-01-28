@@ -30,6 +30,7 @@ from config import (
     AGENT_BROWSER_IDLE_TIMEOUT_SECONDS
 )
 from agent_browser_client import AgentBrowserClient, AgentBrowserError
+from account_manager import AccountManager, AccountInfo
 
 
 def _pid_is_alive(pid: int) -> bool:
@@ -110,6 +111,7 @@ class AuthManager:
     def __init__(self):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         AUTH_DIR.mkdir(parents=True, exist_ok=True)
+        self.account_manager = AccountManager()
 
     def _get_service_config(self, service: str) -> dict:
         service = service or "google"
@@ -118,6 +120,14 @@ class AuthManager:
         return self.SERVICES[service]
 
     def _auth_file(self, service: str) -> Path:
+        service = service or "google"
+        if service == "google":
+            # Use active account from AccountManager
+            auth_file = self.account_manager.get_active_auth_file()
+            if auth_file:
+                return auth_file
+            # Fallback to legacy path if no accounts configured
+            return GOOGLE_AUTH_FILE
         return self._get_service_config(service)["file"]
 
     def _auth_timestamp(self, auth_file: Path) -> str:
@@ -285,8 +295,33 @@ class AuthManager:
             return self._setup_with_agent_browser("google")
 
         try:
-            success = authenticate_with_patchright()
-            if success:
+            success, email, storage_state = authenticate_with_patchright()
+            if success and storage_state:
+                if email:
+                    # Check if account already exists
+                    if self.account_manager.account_exists(email):
+                        # Update existing account
+                        existing = self.account_manager.get_account_by_email(email)
+                        self.account_manager.update_account_credentials(existing.index, storage_state)
+                        # Switch to this account
+                        self.account_manager.switch_account(existing.index)
+                        print(f"   ✓ Updated existing account: {email}")
+                    else:
+                        # Add new account
+                        account = self.account_manager.add_account(email, storage_state)
+                        print(f"   ✓ Added new account [{account.index}]: {email}")
+                else:
+                    # No email extracted - prompt user
+                    email = input("   Enter your Google email: ").strip()
+                    if self.account_manager.account_exists(email):
+                        existing = self.account_manager.get_account_by_email(email)
+                        self.account_manager.update_account_credentials(existing.index, storage_state)
+                        self.account_manager.switch_account(existing.index)
+                        print(f"   ✓ Updated existing account: {email}")
+                    else:
+                        account = self.account_manager.add_account(email, storage_state)
+                        print(f"   ✓ Added new account [{account.index}]: {email}")
+
                 self._ensure_storage_state_symlink()
             return success
         except Exception as e:
