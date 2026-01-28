@@ -798,18 +798,155 @@ class AuthManager:
             print("ℹ️ No daemon running")
         return stopped
 
+    def handle_accounts_command(self, action: str, identifier: str = None):
+        """Handle accounts subcommand actions."""
+        if action == "list":
+            self._accounts_list()
+        elif action == "add":
+            self._accounts_add()
+        elif action == "switch":
+            if not identifier:
+                print("❌ Error: Provide account index or email")
+                print("   Usage: auth_manager.py accounts switch <index|email>")
+                return False
+            self._accounts_switch(identifier)
+        elif action == "remove":
+            if not identifier:
+                print("❌ Error: Provide account index or email")
+                print("   Usage: auth_manager.py accounts remove <index|email>")
+                return False
+            self._accounts_remove(identifier)
+        elif action == "reauth":
+            if not identifier:
+                print("❌ Error: Provide account index or email")
+                print("   Usage: auth_manager.py accounts reauth <index|email>")
+                return False
+            self._accounts_reauth(identifier)
+        else:
+            print(f"❌ Unknown accounts action: {action}")
+            return False
+        return True
+
+    def _accounts_list(self):
+        """List all accounts."""
+        accounts = self.account_manager.list_accounts()
+        active = self.account_manager.get_active_account()
+
+        if not accounts:
+            print("📧 No Google accounts configured")
+            print("   Run: python scripts/run.py auth_manager.py accounts add")
+            return
+
+        print("📧 Google Accounts:")
+        for acc in accounts:
+            is_active = " (active)" if active and acc.index == active.index else ""
+            print(f"  [{acc.index}] {acc.email}{is_active}")
+            print(f"      Added: {acc.added_at[:10] if acc.added_at else 'Unknown'}")
+
+    def _accounts_add(self):
+        """Add a new account via authentication."""
+        print("🔐 Adding new Google account...")
+        success = self.setup(service="google")
+        if success:
+            active = self.account_manager.get_active_account()
+            if active:
+                print(f"✅ Account ready: [{active.index}] {active.email}")
+
+    def _accounts_switch(self, identifier: str):
+        """Switch active account."""
+        try:
+            account = self.account_manager.switch_account(identifier)
+            print(f"✅ Switched to: [{account.index}] {account.email}")
+        except ValueError as e:
+            print(f"❌ {e}")
+            print("   Run: auth_manager.py accounts list")
+
+    def _accounts_remove(self, identifier: str):
+        """Remove an account."""
+        # Get account info before removal for display
+        accounts = self.account_manager.list_accounts()
+        target = None
+        for acc in accounts:
+            if str(acc.index) == str(identifier) or acc.email.lower() == identifier.lower():
+                target = acc
+                break
+
+        if not target:
+            print(f"❌ Account not found: {identifier}")
+            return
+
+        print(f"⚠️ 危险操作检测！")
+        print(f"操作类型：Remove account credentials")
+        print(f"影响范围：{target.email}")
+        print(f"风险评估：Credentials will be deleted")
+        print()
+        confirm = input("请确认是否继续？[y/N]: ").strip().lower()
+
+        if confirm not in ("y", "yes", "是", "确认"):
+            print("❌ Cancelled")
+            return
+
+        if self.account_manager.remove_account(identifier):
+            print(f"✅ Removed account: {target.email}")
+        else:
+            print(f"❌ Failed to remove account")
+
+    def _accounts_reauth(self, identifier: str):
+        """Re-authenticate an existing account."""
+        # Find the account
+        accounts = self.account_manager.list_accounts()
+        target = None
+        for acc in accounts:
+            if str(acc.index) == str(identifier) or acc.email.lower() == identifier.lower():
+                target = acc
+                break
+
+        if not target:
+            print(f"❌ Account not found: {identifier}")
+            return
+
+        print(f"🔐 Re-authenticating: {target.email}")
+        print("   Please log in with this specific account in the browser.")
+
+        # Switch to this account first
+        self.account_manager.switch_account(target.index)
+
+        # Run auth
+        success = self.setup(service="google")
+        if success:
+            print(f"✅ Re-authenticated: [{target.index}] {target.email}")
+
 
 def main():
     parser = argparse.ArgumentParser(description='Manage NotebookLM authentication')
-    parser.add_argument('command', choices=['setup', 'status', 'validate', 'reauth', 'clear', 'stop-daemon', 'watchdog-status'],
-                       help='Command to run')
+    subparsers = parser.add_subparsers(dest='command', help='Command to run')
+
+    # Existing commands
+    subparsers.add_parser('setup', help='Setup authentication')
+    subparsers.add_parser('status', help='Show authentication status')
+    subparsers.add_parser('validate', help='Validate authentication')
+    subparsers.add_parser('reauth', help='Re-authenticate')
+    subparsers.add_parser('clear', help='Clear authentication data')
+    subparsers.add_parser('stop-daemon', help='Stop browser daemon')
+    subparsers.add_parser('watchdog-status', help='Show watchdog status')
+
+    # New accounts subcommand
+    accounts_parser = subparsers.add_parser('accounts', help='Manage multiple Google accounts')
+    accounts_parser.add_argument('action', choices=['list', 'add', 'switch', 'remove', 'reauth'],
+                                 help='Account action')
+    accounts_parser.add_argument('identifier', nargs='?', help='Account index or email')
+
+    # Service argument for existing commands
     parser.add_argument('--service', choices=list(AuthManager.SERVICES.keys()),
                         help='Auth service (default: google)')
 
     args = parser.parse_args()
     auth = AuthManager()
 
-    if args.command == 'setup':
+    if args.command == 'accounts':
+        success = auth.handle_accounts_command(args.action, args.identifier)
+        sys.exit(0 if success else 1)
+    elif args.command == 'setup':
         success = auth.setup(service=args.service)
         sys.exit(0 if success else 1)
     elif args.command == 'status':
@@ -829,6 +966,8 @@ def main():
         sys.exit(0 if success else 1)
     elif args.command == 'watchdog-status':
         auth.watchdog_status()
+    else:
+        parser.print_help()
 
 
 if __name__ == "__main__":
