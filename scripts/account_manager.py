@@ -16,6 +16,7 @@ from config import (
     GOOGLE_AUTH_INDEX,
     GOOGLE_AUTH_FILE,
     AUTH_DIR,
+    LIBRARY_FILE,
 )
 
 
@@ -370,8 +371,36 @@ class AccountManager:
         old_auth_file.unlink()
         print("   ✓ Removed legacy google.json")
 
+        # Migrate library.json notebooks to include account association
+        self._migrate_library_notebooks(index, email)
+
         print("   ✓ Migration complete!")
         return True
+
+    def _migrate_library_notebooks(self, account_index: int, account_email: str) -> None:
+        """Add account association to existing notebooks in library.json."""
+        if not LIBRARY_FILE.exists():
+            return
+
+        try:
+            data = json.loads(LIBRARY_FILE.read_text())
+        except (json.JSONDecodeError, IOError):
+            return
+
+        notebooks = data.get("notebooks", {})
+        updated_count = 0
+
+        for notebook_id, notebook in notebooks.items():
+            if notebook.get("account_index") is None:
+                notebook["account_index"] = account_index
+                notebook["account_email"] = account_email
+                updated_count += 1
+
+        if updated_count > 0:
+            data["notebooks"] = notebooks
+            data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            LIBRARY_FILE.write_text(json.dumps(data, indent=2))
+            print(f"   ✓ Updated {updated_count} notebooks with account association")
 
     def _extract_email_from_credentials(self, creds: Dict[str, Any]) -> Optional[str]:
         """Extract email address from stored credentials.
