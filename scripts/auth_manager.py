@@ -752,6 +752,19 @@ class AuthManager:
         print("🔐 Authentication Status")
         print("=" * 40)
 
+        # Show active account for Google
+        if service is None or service == "google":
+            active = self.account_manager.get_active_account()
+            if active:
+                print(f"Active Account: [{active.index}] {active.email}")
+            else:
+                accounts = self.account_manager.list_accounts()
+                if accounts:
+                    print("Active Account: None selected")
+                else:
+                    print("Active Account: No accounts configured")
+            print()
+
         services = [service] if service else list(self.SERVICES.keys())
         for service_name in services:
             info = self.get_auth_info(service_name)
