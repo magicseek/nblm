@@ -14,6 +14,7 @@ import unicodedata
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+from account_manager import AccountManager
 
 
 def _normalize_id(text: str) -> str:
@@ -119,6 +120,10 @@ class NotebookLibrary:
         if notebook_id in self.notebooks:
             raise ValueError(f"Notebook with ID '{notebook_id}' already exists")
 
+        # Get active account for association
+        account_mgr = AccountManager()
+        active_account = account_mgr.get_active_account()
+
         # Create notebook object
         notebook = {
             'id': notebook_id,
@@ -132,7 +137,10 @@ class NotebookLibrary:
             'created_at': datetime.now().isoformat(),
             'updated_at': datetime.now().isoformat(),
             'use_count': 0,
-            'last_used': None
+            'last_used': None,
+            # Account association
+            'account_index': active_account.index if active_account else None,
+            'account_email': active_account.email if active_account else None,
         }
 
         # Add to library
@@ -242,6 +250,51 @@ class NotebookLibrary:
     def list_notebooks(self) -> List[Dict[str, Any]]:
         """List all notebooks in the library"""
         return list(self.notebooks.values())
+
+    def list_notebooks_for_account(self, account_index: int = None) -> List[Dict[str, Any]]:
+        """List notebooks for a specific account or active account.
+
+        Args:
+            account_index: Account index to filter by. If None, uses active account.
+        """
+        account_mgr = AccountManager()
+
+        if account_index is None:
+            active = account_mgr.get_active_account()
+            if active:
+                account_index = active.index
+
+        if account_index is None:
+            # No account filtering - return all
+            return self.list_notebooks()
+
+        return [
+            nb for nb in self.notebooks.values()
+            if nb.get('account_index') == account_index
+        ]
+
+    def list_all_notebooks_grouped(self) -> Dict[str, List[Dict[str, Any]]]:
+        """List all notebooks grouped by account."""
+        account_mgr = AccountManager()
+        accounts = account_mgr.list_accounts()
+
+        result = {}
+        for acc in accounts:
+            key = f"[{acc.index}] {acc.email}"
+            result[key] = [
+                nb for nb in self.notebooks.values()
+                if nb.get('account_index') == acc.index
+            ]
+
+        # Include unassigned notebooks
+        unassigned = [
+            nb for nb in self.notebooks.values()
+            if nb.get('account_index') is None
+        ]
+        if unassigned:
+            result["[?] Unassigned"] = unassigned
+
+        return result
 
     def search_notebooks(self, query: str) -> List[Dict[str, Any]]:
         """
@@ -441,7 +494,9 @@ def main():
     add_parser.add_argument('--tags', help='Additional tags (comma-separated)')
 
     # List command
-    subparsers.add_parser('list', help='List all notebooks')
+    list_parser = subparsers.add_parser('list', help='List all notebooks')
+    list_parser.add_argument('--all-accounts', action='store_true',
+                             help='Show notebooks from all accounts')
 
     # Search command
     search_parser = subparsers.add_parser('search', help='Search notebooks')
@@ -516,17 +571,40 @@ def main():
         print(json.dumps(notebook, indent=2))
 
     elif args.command == 'list':
-        notebooks = library.list_notebooks()
-        if notebooks:
-            print("\n📚 Notebook Library:")
-            for notebook in notebooks:
-                active = " [ACTIVE]" if notebook['id'] == library.active_notebook_id else ""
-                print(f"\n  📓 {notebook['name']}{active}")
-                print(f"     ID: {notebook['id']}")
-                print(f"     Topics: {', '.join(notebook['topics'])}")
-                print(f"     Uses: {notebook['use_count']}")
+        account_mgr = AccountManager()
+        active = account_mgr.get_active_account()
+
+        if hasattr(args, 'all_accounts') and args.all_accounts:
+            # Show all notebooks grouped by account
+            grouped = library.list_all_notebooks_grouped()
+            print("\n📚 All Notebooks:")
+            for account_key, notebooks in grouped.items():
+                print(f"\n  {account_key}:")
+                if notebooks:
+                    for notebook in notebooks:
+                        active_mark = " [ACTIVE]" if notebook['id'] == library.active_notebook_id else ""
+                        print(f"      📓 {notebook['name']}{active_mark}")
+                        print(f"         ID: {notebook['id']}")
+                else:
+                    print("      (no notebooks)")
         else:
-            print("📚 Library is empty. Add notebooks with: notebook_manager.py add")
+            # Show notebooks for active account
+            if active:
+                print(f"\n📧 Active account: [{active.index}] {active.email}")
+                notebooks = library.list_notebooks_for_account()
+            else:
+                notebooks = library.list_notebooks()
+
+            if notebooks:
+                print("\n📚 Notebook Library:")
+                for notebook in notebooks:
+                    active_mark = " [ACTIVE]" if notebook['id'] == library.active_notebook_id else ""
+                    print(f"\n  📓 {notebook['name']}{active_mark}")
+                    print(f"     ID: {notebook['id']}")
+                    print(f"     Topics: {', '.join(notebook['topics'])}")
+                    print(f"     Uses: {notebook['use_count']}")
+            else:
+                print("📚 No notebooks for this account. Add notebooks with: notebook_manager.py add")
 
     elif args.command == 'search':
         results = library.search_notebooks(args.query)
