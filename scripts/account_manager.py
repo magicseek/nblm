@@ -197,6 +197,124 @@ class AccountManager:
         """Check if an account with this email already exists."""
         return self.get_account_by_email(email) is not None
 
+    def add_account(self, email: str, credentials: Dict[str, Any]) -> AccountInfo:
+        """Add a new account with credentials.
+
+        Args:
+            email: The Google account email
+            credentials: The auth credentials dict (cookies, tokens, etc.)
+
+        Returns:
+            The newly created AccountInfo
+
+        Raises:
+            ValueError: If account already exists
+        """
+        if self.account_exists(email):
+            raise ValueError(f"Account already exists: {email}")
+
+        # Get next index
+        index = self._get_next_index()
+        file_path = self._get_account_file_path(index, email)
+
+        # Save credentials
+        file_path.write_text(json.dumps(credentials, indent=2))
+
+        # Update index
+        data = self._load_index()
+        data["accounts"].append({
+            "index": index,
+            "email": email,
+            "file": file_path.name,
+            "added_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+        # Set as active if first account
+        if data["active_account"] is None:
+            data["active_account"] = index
+
+        self._save_index(data)
+
+        return AccountInfo(
+            index=index,
+            email=email,
+            file_path=file_path,
+            added_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    def remove_account(self, identifier: str | int) -> bool:
+        """Remove an account by index or email.
+
+        Args:
+            identifier: Account index (int) or email (str)
+
+        Returns:
+            True if removed, False if not found
+        """
+        data = self._load_index()
+        target_idx = None
+        target_file = None
+        target_index = None
+
+        for i, acc in enumerate(data["accounts"]):
+            if isinstance(identifier, int) or (isinstance(identifier, str) and str(identifier).isdigit()):
+                if acc["index"] == int(identifier):
+                    target_idx = i
+                    target_file = acc["file"]
+                    target_index = acc["index"]
+                    break
+            else:
+                if acc["email"].lower() == str(identifier).lower():
+                    target_idx = i
+                    target_file = acc["file"]
+                    target_index = acc["index"]
+                    break
+
+        if target_idx is None:
+            return False
+
+        # Remove from index
+        data["accounts"].pop(target_idx)
+
+        # Handle active account removal
+        if data["active_account"] == target_index:
+            if data["accounts"]:
+                # Switch to first remaining account
+                data["active_account"] = data["accounts"][0]["index"]
+            else:
+                data["active_account"] = None
+
+        self._save_index(data)
+
+        # Delete credential file
+        file_path = GOOGLE_AUTH_DIR / target_file
+        if file_path.exists():
+            file_path.unlink()
+
+        return True
+
+    def update_account_credentials(self, index: int, credentials: Dict[str, Any]) -> bool:
+        """Update credentials for an existing account.
+
+        Used for re-authentication.
+        """
+        account = self.get_account_by_index(index)
+        if not account:
+            return False
+
+        account.file_path.write_text(json.dumps(credentials, indent=2))
+        return True
+
+    def get_account_credentials(self, index: int) -> Optional[Dict[str, Any]]:
+        """Load credentials for an account."""
+        account = self.get_account_by_index(index)
+        if not account or not account.file_path.exists():
+            return None
+        try:
+            return json.loads(account.file_path.read_text())
+        except (json.JSONDecodeError, IOError):
+            return None
+
     def _migrate_if_needed(self) -> bool:
         """Migrate from single-account to multi-account structure if needed.
 
