@@ -212,33 +212,34 @@ class AuthManager:
             f.write(session_id)
 
     def _ensure_storage_state_symlink(self):
-        """Create symlink from storage_state.json -> google.json for notebooklm-py compatibility.
+        """Create symlink from storage_state.json -> active account file for notebooklm-py compatibility.
 
         The notebooklm-py library's download methods use Playwright internally and look for
         storage at NOTEBOOKLM_HOME/storage_state.json. This symlink ensures the library
-        uses our google.json auth data.
+        uses the active account's auth data.
         """
         storage_state_path = AUTH_DIR / "storage_state.json"
-        google_auth_path = GOOGLE_AUTH_FILE
 
-        # Only create symlink if google.json exists
-        if not google_auth_path.exists():
+        # Get active account auth file
+        active_auth_file = self.account_manager.get_active_auth_file()
+        if not active_auth_file or not active_auth_file.exists():
             return
 
         # Remove existing symlink or file if it exists
         if storage_state_path.exists() or storage_state_path.is_symlink():
             storage_state_path.unlink()
 
-        # Create relative symlink (google.json is in same directory)
+        # Create symlink to active account file (need relative path)
         try:
-            storage_state_path.symlink_to(google_auth_path.name)
-            print("   ✓ Created storage_state.json symlink for notebooklm-py")
-        except OSError as e:
-            # On Windows, symlinks may require admin privileges
-            # Fall back to copying the file
+            # Calculate relative path from AUTH_DIR to the account file
+            rel_path = active_auth_file.relative_to(AUTH_DIR)
+            storage_state_path.symlink_to(rel_path)
+            print("   ✓ Updated storage_state.json symlink for notebooklm-py")
+        except (OSError, ValueError) as e:
+            # On Windows or if relative path fails, fall back to copying
             import shutil
-            shutil.copy2(google_auth_path, storage_state_path)
-            print("   ✓ Created storage_state.json copy for notebooklm-py")
+            shutil.copy2(active_auth_file, storage_state_path)
+            print("   ✓ Updated storage_state.json copy for notebooklm-py")
 
     def _load_session_id(self) -> str:
         """Load saved session ID"""
