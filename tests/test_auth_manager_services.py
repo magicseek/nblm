@@ -30,6 +30,9 @@ class AuthManagerServiceTests(unittest.TestCase):
     def test_is_authenticated_checks_state_file(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             data_dir = Path(tmpdir) / "data"
+            auth_dir = data_dir / "auth"
+            google_auth_dir = auth_dir / "google"
+            google_auth_dir.mkdir(parents=True, exist_ok=True)
             google_file = Path(tmpdir) / "google.json"
             zlib_file = Path(tmpdir) / "zlib.json"
             services = {
@@ -47,8 +50,14 @@ class AuthManagerServiceTests(unittest.TestCase):
 
             google_file.write_text(json.dumps({"cookies": [{"name": "sid"}]}))
 
+            # Import account_manager to patch it
+            import scripts.account_manager as account_manager_module
+            
             with mock.patch.object(auth_manager, "DATA_DIR", data_dir), \
-                mock.patch.object(auth_manager.AuthManager, "SERVICES", services):
+                 mock.patch.object(auth_manager, "AUTH_DIR", auth_dir), \
+                 mock.patch.object(auth_manager.AuthManager, "SERVICES", services), \
+                 mock.patch.object(account_manager_module, "GOOGLE_AUTH_DIR", google_auth_dir), \
+                 mock.patch.object(account_manager_module, "GOOGLE_AUTH_INDEX", google_auth_dir / "index.json"):
                 auth = auth_manager.AuthManager()
                 self.assertTrue(auth.is_authenticated("google"))
                 self.assertFalse(auth.is_authenticated("zlibrary"))
@@ -56,6 +65,9 @@ class AuthManagerServiceTests(unittest.TestCase):
     def test_restore_auth_loads_state_into_client(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             data_dir = Path(tmpdir) / "data"
+            auth_dir = data_dir / "auth"
+            google_auth_dir = auth_dir / "google"
+            google_auth_dir.mkdir(parents=True, exist_ok=True)
             google_file = Path(tmpdir) / "google.json"
             services = {
                 "google": {
@@ -67,8 +79,14 @@ class AuthManagerServiceTests(unittest.TestCase):
             payload = {"cookies": [{"name": "sid"}], "origins": []}
             google_file.write_text(json.dumps(payload))
 
+            # Import account_manager to patch it
+            import scripts.account_manager as account_manager_module
+
             with mock.patch.object(auth_manager, "DATA_DIR", data_dir), \
-                mock.patch.object(auth_manager.AuthManager, "SERVICES", services):
+                 mock.patch.object(auth_manager, "AUTH_DIR", auth_dir), \
+                 mock.patch.object(auth_manager.AuthManager, "SERVICES", services), \
+                 mock.patch.object(account_manager_module, "GOOGLE_AUTH_DIR", google_auth_dir), \
+                 mock.patch.object(account_manager_module, "GOOGLE_AUTH_INDEX", google_auth_dir / "index.json"):
                 auth = auth_manager.AuthManager()
                 client = DummyClient()
                 result = auth.restore_auth("google", client=client)
@@ -79,24 +97,37 @@ class AuthManagerServiceTests(unittest.TestCase):
     def test_save_auth_writes_state_file(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             data_dir = Path(tmpdir) / "data"
-            google_file = Path(tmpdir) / "google.json"
+            auth_dir = data_dir / "auth"
+            google_auth_dir = auth_dir / "google"
+            google_auth_dir.mkdir(parents=True, exist_ok=True)
+            zlib_file = auth_dir / "zlibrary.json"  # Use zlibrary instead of google
             services = {
-                "google": {
-                    "file": google_file,
-                    "login_url": "https://notebooklm.google.com",
-                    "success_indicators": ["notebooklm"]
+                "zlibrary": {
+                    "file": zlib_file,
+                    "login_url": "https://zh.zlib.li/",
+                    "success_indicators": ["logout"]
                 }
             }
             payload = {"cookies": [{"name": "sid"}], "origins": []}
 
-            with mock.patch.object(auth_manager, "DATA_DIR", data_dir), \
-                mock.patch.object(auth_manager.AuthManager, "SERVICES", services):
-                auth = auth_manager.AuthManager()
-                client = DummyClient(state=payload)
-                result = auth.save_auth("google", client=client)
+            # Import account_manager to patch it
+            import scripts.account_manager as account_manager_module
 
-            self.assertTrue(result)
-            self.assertEqual(json.loads(google_file.read_text()), payload)
+            with mock.patch.object(auth_manager, "DATA_DIR", data_dir), \
+                 mock.patch.object(auth_manager, "AUTH_DIR", auth_dir), \
+                 mock.patch.object(auth_manager.AuthManager, "SERVICES", services), \
+                 mock.patch.object(account_manager_module, "GOOGLE_AUTH_DIR", google_auth_dir), \
+                 mock.patch.object(account_manager_module, "GOOGLE_AUTH_INDEX", google_auth_dir / "index.json"):
+                auth = auth_manager.AuthManager()
+                # Mock _save_session_id to avoid file operations
+                with mock.patch.object(auth, '_save_session_id'):
+                    client = DummyClient(state=payload)
+                    result = auth.save_auth("zlibrary", client=client)
+                
+                # Check inside the context manager
+                self.assertTrue(result)
+                self.assertTrue(zlib_file.exists(), f"File not found at {zlib_file}")
+                self.assertEqual(json.loads(zlib_file.read_text()), payload)
 
     def test_snapshot_indicates_auth_uses_google_check(self):
         auth = auth_manager.AuthManager()
