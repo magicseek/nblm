@@ -344,8 +344,11 @@ class AccountManager:
         # Extract email from credentials
         email = self._extract_email_from_credentials(old_creds)
         if not email:
-            email = "unknown@google.com"
-            print(f"   ⚠️ Could not extract email, using placeholder: {email}")
+            # Don't create placeholder accounts - keep legacy file until proper auth
+            print("   ⚠️ Could not extract email from existing credentials")
+            print("   ℹ️ Legacy google.json will remain active")
+            print("   ℹ️ Run 'auth_manager.py accounts add' to migrate with proper email")
+            return False
         else:
             print(f"   ✓ Detected existing account: {email}")
 
