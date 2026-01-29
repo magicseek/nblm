@@ -320,7 +320,7 @@ def _prompt_auth_setup():
 
     try:
         result = subprocess.run(
-            [str(venv_python), str(auth_script), "setup", "--service", "google"],
+            [str(venv_python), str(auth_script), "--service", "google", "setup"],
             timeout=TIMEOUT_AUTH_SETUP
         )
     except subprocess.TimeoutExpired:
@@ -339,11 +339,35 @@ def _prompt_auth_setup():
 def ensure_google_auth():
     """Ensure Google authentication is valid and fresh, prompting setup if needed."""
     skill_dir = Path(__file__).parent.parent
-    auth_file = skill_dir / "data" / "auth" / "google.json"
     TTL_DAYS = 10
 
+    # Multi-account structure: check google/index.json first
+    index_file = skill_dir / "data" / "auth" / "google" / "index.json"
+    legacy_auth_file = skill_dir / "data" / "auth" / "google.json"
+
+    if index_file.exists():
+        # Multi-account mode: find active account's auth file
+        try:
+            index_data = json.loads(index_file.read_text())
+            active_index = index_data.get("active_account")
+            if active_index:
+                for acc in index_data.get("accounts", []):
+                    if acc.get("index") == active_index:
+                        auth_file = skill_dir / "data" / "auth" / "google" / acc.get("file", "")
+                        break
+                else:
+                    auth_file = None
+            else:
+                auth_file = None
+        except (json.JSONDecodeError, IOError):
+            auth_file = None
+    elif legacy_auth_file.exists():
+        auth_file = legacy_auth_file
+    else:
+        auth_file = None
+
     # Check 1: File exists
-    if not auth_file.exists():
+    if not auth_file or not auth_file.exists():
         return _prompt_auth_setup()
 
     # Check 2: Valid structure
