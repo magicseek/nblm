@@ -320,7 +320,7 @@ def _prompt_auth_setup():
 
     try:
         result = subprocess.run(
-            [str(venv_python), str(auth_script), "--service", "google", "setup"],
+            [str(venv_python), str(auth_script), "setup", "--service", "google"],
             timeout=TIMEOUT_AUTH_SETUP
         )
     except subprocess.TimeoutExpired:
@@ -330,6 +330,35 @@ def _prompt_auth_setup():
 
     if result.returncode != 0:
         print("❌ Authentication failed. Cannot proceed.")
+        sys.exit(1)
+
+    print()  # Blank line after auth success
+    return True
+
+
+def _prompt_auth_reauth():
+    """Trigger interactive reauth for expired credentials, return True on success."""
+    print("🔐 Re-authenticating expired Google session...")
+    print("   Please complete login in the browser window.")
+    print(f"   (Timeout: {TIMEOUT_AUTH_SETUP // 60} minutes)")
+    print()
+
+    venv_python = get_venv_python()
+    skill_dir = Path(__file__).parent.parent
+    auth_script = skill_dir / "scripts" / "auth_manager.py"
+
+    try:
+        result = subprocess.run(
+            [str(venv_python), str(auth_script), "reauth", "--service", "google"],
+            timeout=TIMEOUT_AUTH_SETUP
+        )
+    except subprocess.TimeoutExpired:
+        print(f"❌ Re-authentication timed out after {TIMEOUT_AUTH_SETUP // 60} minutes.")
+        print("   Please try again: python scripts/run.py auth_manager.py reauth")
+        sys.exit(1)
+
+    if result.returncode != 0:
+        print("❌ Re-authentication failed. Cannot proceed.")
         sys.exit(1)
 
     print()  # Blank line after auth success
@@ -389,7 +418,7 @@ def ensure_google_auth():
             age = datetime.now(timezone.utc) - timestamp
             if age > timedelta(days=TTL_DAYS):
                 print(f"⚠️ Google auth expired ({age.days} days old)")
-                return _prompt_auth_setup()
+                return _prompt_auth_reauth()  # Reauth existing account, not fresh setup
         except ValueError:
             pass  # Invalid timestamp, but cookies exist - proceed
 
