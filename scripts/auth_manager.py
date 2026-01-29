@@ -289,6 +289,9 @@ class AuthManager:
             service: Service to authenticate ("google" or "zlibrary")
             use_fresh_profile: If True, use a fresh browser profile to allow adding new accounts
         """
+        # Default to google if not specified
+        service = service or "google"
+
         # Use Patchright for Google auth (bypasses "browser not secure" check)
         if service == "google":
             return self._setup_google_with_patchright(use_fresh_profile=use_fresh_profile)
@@ -297,15 +300,29 @@ class AuthManager:
         return self._setup_with_agent_browser(service)
 
     def _setup_google_with_patchright(self, use_fresh_profile: bool = False):
-        """Setup Google auth using Patchright (anti-detection browser)"""
+        """Setup Google auth using Patchright (anti-detection browser)
+
+        IMPORTANT: Google authentication MUST use Patchright to bypass the
+        "This browser or app may not be secure" blocking. Agent-browser uses
+        Chrome for Testing which is detected as an automation browser.
+        """
         try:
             from patchright_auth import authenticate_with_patchright
         except ImportError as e:
-            print(f"⚠️ Patchright auth module not found ({e}), falling back to agent-browser")
-            return self._setup_with_agent_browser("google")
+            print(f"❌ Patchright not available: {e}")
+            print()
+            print("   Google authentication requires Patchright (anti-detection browser).")
+            print("   Chrome for Testing is blocked by Google's security checks.")
+            print()
+            print("   To install Patchright:")
+            print("   pip install patchright && patchright install chromium")
+            return False
         except Exception as e:
-            print(f"⚠️ Patchright import error ({e}), falling back to agent-browser")
-            return self._setup_with_agent_browser("google")
+            print(f"❌ Patchright import error: {e}")
+            print()
+            print("   Please reinstall Patchright:")
+            print("   pip install --upgrade patchright && patchright install chromium")
+            return False
 
         try:
             success, email, storage_state = authenticate_with_patchright(
@@ -340,8 +357,13 @@ class AuthManager:
                 self._ensure_storage_state_symlink()
             return success
         except Exception as e:
-            print(f"⚠️ Patchright auth failed ({e}), falling back to agent-browser")
-            return self._setup_with_agent_browser("google")
+            print(f"❌ Patchright authentication failed: {e}")
+            print()
+            print("   Please ensure:")
+            print("   1. Google Chrome is installed on your system")
+            print("   2. Patchright is properly installed: pip install patchright")
+            print("   3. Patchright browser is installed: patchright install chromium")
+            return False
 
     def _setup_with_agent_browser(self, service: str):
         """Original setup using agent-browser"""
@@ -760,7 +782,7 @@ class AuthManager:
                 print("   ✓ Removed session_id")
 
         print("✅ Authentication data cleared")
-        print("   Note: Browser profile preserved. Run 'reauth' for full reset.")
+        print("   Note: Browser profile preserved for future sessions.")
 
     def status(self, service: str = None):
         """Show current authentication status"""
@@ -882,15 +904,40 @@ class AuthManager:
                 print(f"✅ Account ready: [{active.index}] {active.email}")
 
     def _accounts_switch(self, identifier: str):
-        """Switch active account."""
+        """Switch active account and update active notebook."""
         try:
             account = self.account_manager.switch_account(identifier)
             print(f"✅ Switched to: [{account.index}] {account.email}")
             # Update symlink to point to new active account
             self._ensure_storage_state_symlink(quiet=True)
+
+            # Switch active notebook to one belonging to the new account
+            self._switch_active_notebook_for_account(account.index)
         except ValueError as e:
             print(f"❌ {e}")
             print("   Run: auth_manager.py accounts list")
+
+    def _switch_active_notebook_for_account(self, account_index: int):
+        """Switch active notebook to one belonging to the specified account."""
+        from notebook_manager import NotebookLibrary
+
+        library = NotebookLibrary()
+        notebooks = library.list_notebooks_for_account(account_index)
+
+        if notebooks:
+            # Activate the first notebook for this account
+            first_notebook = notebooks[0]
+            notebook_id = first_notebook.get('id') or first_notebook.get('notebooklm_id')
+            if notebook_id and notebook_id in library.notebooks:
+                library.active_notebook_id = notebook_id
+                library._save_library()
+                print(f"   📓 Active notebook: {first_notebook.get('name', notebook_id)}")
+        else:
+            # No notebooks for this account - clear active notebook
+            if library.active_notebook_id:
+                library.active_notebook_id = None
+                library._save_library()
+                print("   📓 No notebooks for this account")
 
     def _accounts_remove(self, identifier: str):
         """Remove an account."""
@@ -952,12 +999,32 @@ def main():
     parser = argparse.ArgumentParser(description='Manage NotebookLM authentication')
     subparsers = parser.add_subparsers(dest='command', help='Command to run')
 
-    # Existing commands
-    subparsers.add_parser('setup', help='Setup authentication')
-    subparsers.add_parser('status', help='Show authentication status')
-    subparsers.add_parser('validate', help='Validate authentication')
-    subparsers.add_parser('reauth', help='Re-authenticate')
-    subparsers.add_parser('clear', help='Clear authentication data')
+    # Service choices for reuse
+    service_choices = list(AuthManager.SERVICES.keys())
+
+    # Subcommands with --service option
+    setup_parser = subparsers.add_parser('setup', help='Setup authentication')
+    setup_parser.add_argument('--service', choices=service_choices,
+                              help='Auth service (default: google)')
+    setup_parser.add_argument('--fresh', action='store_true',
+                              help='Use fresh browser profile (forces account selection)')
+
+    status_parser = subparsers.add_parser('status', help='Show authentication status')
+    status_parser.add_argument('--service', choices=service_choices,
+                               help='Auth service (default: all)')
+
+    validate_parser = subparsers.add_parser('validate', help='Validate authentication')
+    validate_parser.add_argument('--service', choices=service_choices,
+                                 help='Auth service (default: google)')
+
+    reauth_parser = subparsers.add_parser('reauth', help='Re-authenticate (uses fresh profile)')
+    reauth_parser.add_argument('--service', choices=service_choices,
+                               help='Auth service (default: google)')
+
+    clear_parser = subparsers.add_parser('clear', help='Clear authentication data')
+    clear_parser.add_argument('--service', choices=service_choices,
+                              help='Auth service (default: all)')
+
     subparsers.add_parser('stop-daemon', help='Stop browser daemon')
     subparsers.add_parser('watchdog-status', help='Show watchdog status')
 
@@ -967,10 +1034,6 @@ def main():
                                  help='Account action')
     accounts_parser.add_argument('identifier', nargs='?', help='Account index or email')
 
-    # Service argument for existing commands
-    parser.add_argument('--service', choices=list(AuthManager.SERVICES.keys()),
-                        help='Auth service (default: google)')
-
     args = parser.parse_args()
     auth = AuthManager()
 
@@ -978,7 +1041,7 @@ def main():
         success = auth.handle_accounts_command(args.action, args.identifier)
         sys.exit(0 if success else 1)
     elif args.command == 'setup':
-        success = auth.setup(service=args.service)
+        success = auth.setup(service=args.service, use_fresh_profile=args.fresh)
         sys.exit(0 if success else 1)
     elif args.command == 'status':
         auth.status(service=args.service)
@@ -988,7 +1051,8 @@ def main():
     elif args.command == 'reauth':
         service = args.service or "google"
         auth.clear(service=None if args.service is None else service)
-        success = auth.setup(service=service)
+        # Always use fresh profile for reauth to force account selection
+        success = auth.setup(service=service, use_fresh_profile=True)
         sys.exit(0 if success else 1)
     elif args.command == 'clear':
         auth.clear(service=args.service)
