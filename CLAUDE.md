@@ -48,6 +48,13 @@ python scripts/run.py auth_manager.py status --service zlibrary
 python scripts/run.py auth_manager.py reauth --service google   # Re-authenticate
 python scripts/run.py auth_manager.py clear --service zlibrary  # Clear auth data
 
+# Multi-Account Management (Google)
+python scripts/run.py auth_manager.py accounts list             # List all accounts
+python scripts/run.py auth_manager.py accounts add              # Add new account
+python scripts/run.py auth_manager.py accounts switch 1         # Switch by index
+python scripts/run.py auth_manager.py accounts switch user@gmail.com  # Switch by email
+python scripts/run.py auth_manager.py accounts remove 2         # Remove account
+
 # Notebook Library (Smart Add auto-discovers metadata)
 python scripts/run.py notebook_manager.py list
 python scripts/run.py notebook_manager.py add <notebook-id-or-url>  # Auto-discovers name, description, topics
@@ -100,9 +107,11 @@ scripts/zlibrary/
 └── epub_converter.py     # EPUB to Markdown conversion
 
 data/                     # Git-ignored local storage
-├── library.json          # Notebook metadata
+├── library.json          # Notebook metadata (with account associations)
 ├── auth/                 # Per-service auth state
-│   ├── google.json
+│   ├── google/           # Multi-account Google auth
+│   │   ├── index.json    # Account index (active account, list)
+│   │   └── *.json        # Per-account credentials
 │   └── zlibrary.json
 └── agent_browser/        # Session metadata (session_id)
 
@@ -169,9 +178,11 @@ python scripts/run.py source_manager.py add --url "https://zh.zlib.li/book/..."
 ## Important Notes
 
 - Authentication requires a visible browser session (`--show-browser`)
-- Free tier rate limit: 50 queries/day
+- Free tier rate limit: 50 queries/day per Google account
+- **Multi-account support:** Add multiple Google accounts to bypass rate limits
 - `data/` directory contains sensitive auth data - never commit
-- `data/auth/google.json` includes NotebookLM API token + cookies
+- `data/auth/google/` stores per-account credentials with email in filename
 - `NOTEBOOKLM_AUTH_TOKEN` + `NOTEBOOKLM_COOKIES` allow API fallback if the daemon cannot start
 - Each question is independent (stateless model)
 - Answers include follow-up prompt to encourage comprehensive research
+- Notebooks are automatically associated with the account that added them

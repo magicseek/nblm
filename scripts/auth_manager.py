@@ -30,6 +30,7 @@ from config import (
     AGENT_BROWSER_IDLE_TIMEOUT_SECONDS
 )
 from agent_browser_client import AgentBrowserClient, AgentBrowserError
+from account_manager import AccountManager, AccountInfo
 
 
 def _pid_is_alive(pid: int) -> bool:
@@ -110,6 +111,9 @@ class AuthManager:
     def __init__(self):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         AUTH_DIR.mkdir(parents=True, exist_ok=True)
+        self.account_manager = AccountManager()
+        # Ensure symlink is up-to-date after migration (silent)
+        self._ensure_storage_state_symlink(quiet=True)
 
     def _get_service_config(self, service: str) -> dict:
         service = service or "google"
@@ -118,6 +122,14 @@ class AuthManager:
         return self.SERVICES[service]
 
     def _auth_file(self, service: str) -> Path:
+        service = service or "google"
+        if service == "google":
+            # Use active account from AccountManager
+            auth_file = self.account_manager.get_active_auth_file()
+            if auth_file:
+                return auth_file
+            # Fallback to legacy path if no accounts configured
+            return GOOGLE_AUTH_FILE
         return self._get_service_config(service)["file"]
 
     def _auth_timestamp(self, auth_file: Path) -> str:
@@ -201,34 +213,40 @@ class AuthManager:
         with open(AGENT_BROWSER_SESSION_FILE, 'w') as f:
             f.write(session_id)
 
-    def _ensure_storage_state_symlink(self):
-        """Create symlink from storage_state.json -> google.json for notebooklm-py compatibility.
+    def _ensure_storage_state_symlink(self, quiet: bool = False):
+        """Create symlink from storage_state.json -> active account file for notebooklm-py compatibility.
 
         The notebooklm-py library's download methods use Playwright internally and look for
         storage at NOTEBOOKLM_HOME/storage_state.json. This symlink ensures the library
-        uses our google.json auth data.
+        uses the active account's auth data.
+
+        Args:
+            quiet: If True, don't print status messages
         """
         storage_state_path = AUTH_DIR / "storage_state.json"
-        google_auth_path = GOOGLE_AUTH_FILE
 
-        # Only create symlink if google.json exists
-        if not google_auth_path.exists():
+        # Get active account auth file
+        active_auth_file = self.account_manager.get_active_auth_file()
+        if not active_auth_file or not active_auth_file.exists():
             return
 
         # Remove existing symlink or file if it exists
         if storage_state_path.exists() or storage_state_path.is_symlink():
             storage_state_path.unlink()
 
-        # Create relative symlink (google.json is in same directory)
+        # Create symlink to active account file (need relative path)
         try:
-            storage_state_path.symlink_to(google_auth_path.name)
-            print("   ✓ Created storage_state.json symlink for notebooklm-py")
-        except OSError as e:
-            # On Windows, symlinks may require admin privileges
-            # Fall back to copying the file
+            # Calculate relative path from AUTH_DIR to the account file
+            rel_path = active_auth_file.relative_to(AUTH_DIR)
+            storage_state_path.symlink_to(rel_path)
+            if not quiet:
+                print("   ✓ Updated storage_state.json symlink for notebooklm-py")
+        except (OSError, ValueError) as e:
+            # On Windows or if relative path fails, fall back to copying
             import shutil
-            shutil.copy2(google_auth_path, storage_state_path)
-            print("   ✓ Created storage_state.json copy for notebooklm-py")
+            shutil.copy2(active_auth_file, storage_state_path)
+            if not quiet:
+                print("   ✓ Updated storage_state.json copy for notebooklm-py")
 
     def _load_session_id(self) -> str:
         """Load saved session ID"""
@@ -264,16 +282,21 @@ class AuthManager:
         indicators = self._get_service_config(service_name)["success_indicators"]
         return any(indicator in snapshot_lower for indicator in indicators)
 
-    def setup(self, service: str = "google"):
-        """Interactive authentication setup for specified service"""
+    def setup(self, service: str = "google", use_fresh_profile: bool = False):
+        """Interactive authentication setup for specified service
+
+        Args:
+            service: Service to authenticate ("google" or "zlibrary")
+            use_fresh_profile: If True, use a fresh browser profile to allow adding new accounts
+        """
         # Use Patchright for Google auth (bypasses "browser not secure" check)
         if service == "google":
-            return self._setup_google_with_patchright()
+            return self._setup_google_with_patchright(use_fresh_profile=use_fresh_profile)
 
         # For other services, use agent-browser
         return self._setup_with_agent_browser(service)
 
-    def _setup_google_with_patchright(self):
+    def _setup_google_with_patchright(self, use_fresh_profile: bool = False):
         """Setup Google auth using Patchright (anti-detection browser)"""
         try:
             from patchright_auth import authenticate_with_patchright
@@ -285,8 +308,35 @@ class AuthManager:
             return self._setup_with_agent_browser("google")
 
         try:
-            success = authenticate_with_patchright()
-            if success:
+            success, email, storage_state = authenticate_with_patchright(
+                use_fresh_profile=use_fresh_profile
+            )
+            if success and storage_state:
+                if email:
+                    # Check if account already exists
+                    if self.account_manager.account_exists(email):
+                        # Update existing account
+                        existing = self.account_manager.get_account_by_email(email)
+                        self.account_manager.update_account_credentials(existing.index, storage_state)
+                        # Switch to this account
+                        self.account_manager.switch_account(existing.index)
+                        print(f"   ✓ Updated existing account: {email}")
+                    else:
+                        # Add new account
+                        account = self.account_manager.add_account(email, storage_state)
+                        print(f"   ✓ Added new account [{account.index}]: {email}")
+                else:
+                    # No email extracted - prompt user
+                    email = input("   Enter your Google email: ").strip()
+                    if self.account_manager.account_exists(email):
+                        existing = self.account_manager.get_account_by_email(email)
+                        self.account_manager.update_account_credentials(existing.index, storage_state)
+                        self.account_manager.switch_account(existing.index)
+                        print(f"   ✓ Updated existing account: {email}")
+                    else:
+                        account = self.account_manager.add_account(email, storage_state)
+                        print(f"   ✓ Added new account [{account.index}]: {email}")
+
                 self._ensure_storage_state_symlink()
             return success
         except Exception as e:
@@ -717,6 +767,19 @@ class AuthManager:
         print("🔐 Authentication Status")
         print("=" * 40)
 
+        # Show active account for Google
+        if service is None or service == "google":
+            active = self.account_manager.get_active_account()
+            if active:
+                print(f"Active Account: [{active.index}] {active.email}")
+            else:
+                accounts = self.account_manager.list_accounts()
+                if accounts:
+                    print("Active Account: None selected")
+                else:
+                    print("Active Account: No accounts configured")
+            print()
+
         services = [service] if service else list(self.SERVICES.keys())
         for service_name in services:
             info = self.get_auth_info(service_name)
@@ -763,18 +826,158 @@ class AuthManager:
             print("ℹ️ No daemon running")
         return stopped
 
+    def handle_accounts_command(self, action: str, identifier: str = None):
+        """Handle accounts subcommand actions."""
+        if action == "list":
+            self._accounts_list()
+        elif action == "add":
+            self._accounts_add()
+        elif action == "switch":
+            if not identifier:
+                print("❌ Error: Provide account index or email")
+                print("   Usage: auth_manager.py accounts switch <index|email>")
+                return False
+            self._accounts_switch(identifier)
+        elif action == "remove":
+            if not identifier:
+                print("❌ Error: Provide account index or email")
+                print("   Usage: auth_manager.py accounts remove <index|email>")
+                return False
+            self._accounts_remove(identifier)
+        elif action == "reauth":
+            if not identifier:
+                print("❌ Error: Provide account index or email")
+                print("   Usage: auth_manager.py accounts reauth <index|email>")
+                return False
+            self._accounts_reauth(identifier)
+        else:
+            print(f"❌ Unknown accounts action: {action}")
+            return False
+        return True
+
+    def _accounts_list(self):
+        """List all accounts."""
+        accounts = self.account_manager.list_accounts()
+        active = self.account_manager.get_active_account()
+
+        if not accounts:
+            print("📧 No Google accounts configured")
+            print("   Run: python scripts/run.py auth_manager.py accounts add")
+            return
+
+        print("📧 Google Accounts:")
+        for acc in accounts:
+            is_active = " (active)" if active and acc.index == active.index else ""
+            print(f"  [{acc.index}] {acc.email}{is_active}")
+            print(f"      Added: {acc.added_at[:10] if acc.added_at else 'Unknown'}")
+
+    def _accounts_add(self):
+        """Add a new account via authentication."""
+        print("🔐 Adding new Google account...")
+        # Use fresh profile to force account selection instead of auto-login
+        success = self.setup(service="google", use_fresh_profile=True)
+        if success:
+            active = self.account_manager.get_active_account()
+            if active:
+                print(f"✅ Account ready: [{active.index}] {active.email}")
+
+    def _accounts_switch(self, identifier: str):
+        """Switch active account."""
+        try:
+            account = self.account_manager.switch_account(identifier)
+            print(f"✅ Switched to: [{account.index}] {account.email}")
+            # Update symlink to point to new active account
+            self._ensure_storage_state_symlink(quiet=True)
+        except ValueError as e:
+            print(f"❌ {e}")
+            print("   Run: auth_manager.py accounts list")
+
+    def _accounts_remove(self, identifier: str):
+        """Remove an account."""
+        # Get account info before removal for display
+        accounts = self.account_manager.list_accounts()
+        target = None
+        for acc in accounts:
+            if str(acc.index) == str(identifier) or acc.email.lower() == identifier.lower():
+                target = acc
+                break
+
+        if not target:
+            print(f"❌ Account not found: {identifier}")
+            return
+
+        print("⚠️ Dangerous operation detected!")
+        print("Operation: Remove account credentials")
+        print(f"Target account: {target.email}")
+        print("Risk: Credentials will be deleted")
+        print()
+        confirm = input("Are you sure you want to continue? [y/N]: ").strip().lower()
+
+        if confirm not in ("y", "yes"):
+            print("❌ Cancelled")
+            return
+
+        if self.account_manager.remove_account(identifier):
+            print(f"✅ Removed account: {target.email}")
+        else:
+            print(f"❌ Failed to remove account")
+
+    def _accounts_reauth(self, identifier: str):
+        """Re-authenticate an existing account."""
+        # Find the account
+        accounts = self.account_manager.list_accounts()
+        target = None
+        for acc in accounts:
+            if str(acc.index) == str(identifier) or acc.email.lower() == identifier.lower():
+                target = acc
+                break
+
+        if not target:
+            print(f"❌ Account not found: {identifier}")
+            return
+
+        print(f"🔐 Re-authenticating: {target.email}")
+        print("   Please log in with this specific account in the browser.")
+
+        # Switch to this account first
+        self.account_manager.switch_account(target.index)
+
+        # Run auth
+        success = self.setup(service="google")
+        if success:
+            print(f"✅ Re-authenticated: [{target.index}] {target.email}")
+
 
 def main():
     parser = argparse.ArgumentParser(description='Manage NotebookLM authentication')
-    parser.add_argument('command', choices=['setup', 'status', 'validate', 'reauth', 'clear', 'stop-daemon', 'watchdog-status'],
-                       help='Command to run')
+    subparsers = parser.add_subparsers(dest='command', help='Command to run')
+
+    # Existing commands
+    subparsers.add_parser('setup', help='Setup authentication')
+    subparsers.add_parser('status', help='Show authentication status')
+    subparsers.add_parser('validate', help='Validate authentication')
+    subparsers.add_parser('reauth', help='Re-authenticate')
+    subparsers.add_parser('clear', help='Clear authentication data')
+    subparsers.add_parser('stop-daemon', help='Stop browser daemon')
+    subparsers.add_parser('watchdog-status', help='Show watchdog status')
+
+    # New accounts subcommand
+    accounts_parser = subparsers.add_parser('accounts', help='Manage multiple Google accounts')
+    accounts_parser.add_argument('action', choices=['list', 'add', 'switch', 'remove', 'reauth'],
+                                 help='Account action')
+    accounts_parser.add_argument('identifier', nargs='?', help='Account index or email')
+
+    # Service argument for existing commands
     parser.add_argument('--service', choices=list(AuthManager.SERVICES.keys()),
                         help='Auth service (default: google)')
 
     args = parser.parse_args()
     auth = AuthManager()
 
-    if args.command == 'setup':
+    if args.command == 'accounts':
+        success = auth.handle_accounts_command(args.action, args.identifier)
+        sys.exit(0 if success else 1)
+    elif args.command == 'setup':
         success = auth.setup(service=args.service)
         sys.exit(0 if success else 1)
     elif args.command == 'status':
@@ -794,6 +997,8 @@ def main():
         sys.exit(0 if success else 1)
     elif args.command == 'watchdog-status':
         auth.watchdog_status()
+    else:
+        parser.print_help()
 
 
 if __name__ == "__main__":

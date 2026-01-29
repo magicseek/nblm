@@ -44,8 +44,30 @@ class NotebookLMAuthError(NotebookLMError):
 class NotebookLMWrapper:
     """Thin async wrapper over notebooklm-py with auth loading and fallback."""
 
-    def __init__(self, auth_file: Optional[Path] = None):
-        self.auth_file = auth_file or GOOGLE_AUTH_FILE
+    def __init__(self, auth_file: Optional[Path] = None, account_index: Optional[int] = None):
+        """Initialize wrapper with optional account selection.
+
+        Args:
+            auth_file: Explicit auth file path (overrides account_index)
+            account_index: Account index to use (defaults to active account)
+        """
+        if auth_file:
+            self.auth_file = auth_file
+        elif account_index is not None:
+            from account_manager import AccountManager
+            account_mgr = AccountManager()
+            account = account_mgr.get_account_by_index(account_index)
+            if account:
+                self.auth_file = account.file_path
+            else:
+                raise ValueError(f"Account not found: {account_index}")
+        else:
+            # Use active account
+            from account_manager import AccountManager
+            account_mgr = AccountManager()
+            active_auth_file = account_mgr.get_active_auth_file()
+            self.auth_file = active_auth_file or GOOGLE_AUTH_FILE
+
         self._client: Optional[NotebookLMClient] = None
         self._auth_data: Optional[dict] = None
 

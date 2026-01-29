@@ -27,6 +27,10 @@ All dependencies and authentication are handled automatically by `run.py`:
 |---------|-------------|
 | `login` | Authenticate with Google |
 | `status` | Show auth and library status |
+| `accounts` | List all Google accounts |
+| `accounts add` | Add a new Google account |
+| `accounts switch <id>` | Switch active account (by index or email) |
+| `accounts remove <id>` | Remove an account |
 | `local` | List notebooks in local library |
 | `remote` | List all notebooks from NotebookLM API |
 | `create <name>` | Create a new notebook |
@@ -85,6 +89,14 @@ $IF($ARGUMENTS,
   Parse the command from: "$ARGUMENTS"
 
   **login** → `python scripts/run.py auth_manager.py setup --service google`
+
+  **accounts** → `python scripts/run.py auth_manager.py accounts list`
+
+  **accounts add** → `python scripts/run.py auth_manager.py accounts add`
+
+  **accounts switch <id>** → `python scripts/run.py auth_manager.py accounts switch "<id>"`
+
+  **accounts remove <id>** → `python scripts/run.py auth_manager.py accounts remove "<id>"`
 
   **status** → Run both:
   - `python scripts/run.py auth_manager.py status`
@@ -410,6 +422,13 @@ python scripts/run.py auth_manager.py status                   # Show all servic
 python scripts/run.py auth_manager.py status --service zlibrary
 python scripts/run.py auth_manager.py reauth --service google  # Re-authenticate
 python scripts/run.py auth_manager.py clear --service zlibrary # Clear auth
+
+# Multi-Account Management (Google)
+python scripts/run.py auth_manager.py accounts list             # List all accounts
+python scripts/run.py auth_manager.py accounts add              # Add new account
+python scripts/run.py auth_manager.py accounts switch 1         # Switch by index
+python scripts/run.py auth_manager.py accounts switch user@gmail.com  # Switch by email
+python scripts/run.py auth_manager.py accounts remove 2         # Remove account
 ```
 
 ### Notebook Management (`notebook_manager.py`)
@@ -485,8 +504,10 @@ npm run install-browsers
 ## Data Storage
 
 All data stored in `~/.claude/skills/notebooklm/data/`:
-- `library.json` - Notebook metadata
-- `auth/google.json` - Google auth state
+- `library.json` - Notebook metadata (with account associations)
+- `auth/google/` - Multi-account Google auth
+  - `index.json` - Account index (active account, list)
+  - `<n>-<email>.json` - Per-account credentials
 - `auth/zlibrary.json` - Z-Library auth state
 - `agent_browser/session_id` - Current daemon session ID
 - `agent_browser/last_activity.json` - Last activity timestamp for idle shutdown
@@ -535,7 +556,7 @@ Synthesize and respond to user
 | DAEMON_UNAVAILABLE | Ensure Node.js/npm installed, run `npm install`, retry |
 | AUTH_REQUIRED | Run `python scripts/run.py auth_manager.py setup` |
 | ELEMENT_NOT_FOUND | Verify notebook URL and re-run with fresh page load |
-| Rate limit (50/day) | Wait or switch Google account |
+| Rate limit (50/day) | Wait or add another Google account with `accounts add` |
 | Browser crashes | `python scripts/run.py cleanup_manager.py --preserve-library` |
 | Notebook not found | Check with `notebook_manager.py list` |
 
@@ -551,7 +572,7 @@ Synthesize and respond to user
 ## Limitations
 
 - No session persistence (each question = new browser)
-- Rate limits on free Google accounts (50 queries/day)
+- Rate limits on free Google accounts (50 queries/day per account; use multiple accounts to increase)
 - Manual upload required (user must add docs to NotebookLM)
 - Browser overhead (few seconds per question)
 
