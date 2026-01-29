@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union, Tuple
 
 from config import (
     GOOGLE_AUTH_DIR,
@@ -18,6 +18,22 @@ from config import (
     AUTH_DIR,
     LIBRARY_FILE,
 )
+
+
+def validate_email(email: str) -> Tuple[bool, str]:
+    """Validate an email address.
+    
+    Args:
+        email: Email address to validate
+        
+    Returns:
+        Tuple of (is_valid, error_message). error_message is empty if valid.
+    """
+    if not email or not email.strip():
+        return False, "Email cannot be empty"
+    if "@" not in email:
+        return False, "Email must contain '@' character"
+    return True, ""
 
 
 @dataclass
@@ -125,7 +141,7 @@ class AccountManager:
             return account.file_path
         return None
 
-    def switch_account(self, identifier: str | int) -> AccountInfo:
+    def switch_account(self, identifier: Union[str, int]) -> AccountInfo:
         """Switch to a different account by index or email.
 
         Args:
@@ -209,8 +225,15 @@ class AccountManager:
             The newly created AccountInfo
 
         Raises:
-            ValueError: If account already exists
+            ValueError: If account already exists or email is invalid
         """
+        # Validate email
+        is_valid, error_msg = validate_email(email)
+        if not is_valid:
+            raise ValueError(error_msg)
+        
+        email = email.strip()
+        
         if self.account_exists(email):
             raise ValueError(f"Account already exists: {email}")
 
@@ -243,7 +266,7 @@ class AccountManager:
             added_at=datetime.now(timezone.utc).isoformat(),
         )
 
-    def remove_account(self, identifier: str | int) -> bool:
+    def remove_account(self, identifier: Union[str, int]) -> bool:
         """Remove an account by index or email.
 
         Args:

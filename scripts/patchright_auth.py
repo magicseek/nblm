@@ -19,7 +19,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any
 
 from config import (
     GOOGLE_AUTH_FILE,
@@ -256,6 +256,7 @@ def authenticate_with_patchright(
                         if "notebooklm.google.com" in url and "accounts.google.com" not in url:
                             return True
                 except Exception:
+                    # CDP errors are non-fatal; if this fails we simply fall back to returning False.
                     pass
                 return False
 
@@ -339,6 +340,7 @@ def authenticate_with_patchright(
                         page.goto(NOTEBOOKLM_URL, wait_until="domcontentloaded")
                         time.sleep(2)  # Wait for page to load
                     except Exception:
+                        # Navigation errors are non-fatal; we may still have valid auth cookies from other windows.
                         pass
 
                 # Extract email and storage state before browser closes

@@ -60,7 +60,7 @@ class NotebookLMWrapper:
             if account:
                 self.auth_file = account.file_path
             else:
-                raise ValueError(f"Account not found: {account_index}")
+                raise NotebookLMAuthError(f"Account not found for index {account_index}")
         else:
             # Use active account
             from account_manager import AccountManager
