@@ -112,6 +112,8 @@ class AuthManager:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         AUTH_DIR.mkdir(parents=True, exist_ok=True)
         self.account_manager = AccountManager()
+        # Ensure symlink is up-to-date after migration (silent)
+        self._ensure_storage_state_symlink(quiet=True)
 
     def _get_service_config(self, service: str) -> dict:
         service = service or "google"
@@ -211,12 +213,15 @@ class AuthManager:
         with open(AGENT_BROWSER_SESSION_FILE, 'w') as f:
             f.write(session_id)
 
-    def _ensure_storage_state_symlink(self):
+    def _ensure_storage_state_symlink(self, quiet: bool = False):
         """Create symlink from storage_state.json -> active account file for notebooklm-py compatibility.
 
         The notebooklm-py library's download methods use Playwright internally and look for
         storage at NOTEBOOKLM_HOME/storage_state.json. This symlink ensures the library
         uses the active account's auth data.
+
+        Args:
+            quiet: If True, don't print status messages
         """
         storage_state_path = AUTH_DIR / "storage_state.json"
 
@@ -234,12 +239,14 @@ class AuthManager:
             # Calculate relative path from AUTH_DIR to the account file
             rel_path = active_auth_file.relative_to(AUTH_DIR)
             storage_state_path.symlink_to(rel_path)
-            print("   ✓ Updated storage_state.json symlink for notebooklm-py")
+            if not quiet:
+                print("   ✓ Updated storage_state.json symlink for notebooklm-py")
         except (OSError, ValueError) as e:
             # On Windows or if relative path fails, fall back to copying
             import shutil
             shutil.copy2(active_auth_file, storage_state_path)
-            print("   ✓ Updated storage_state.json copy for notebooklm-py")
+            if not quiet:
+                print("   ✓ Updated storage_state.json copy for notebooklm-py")
 
     def _load_session_id(self) -> str:
         """Load saved session ID"""
@@ -275,16 +282,21 @@ class AuthManager:
         indicators = self._get_service_config(service_name)["success_indicators"]
         return any(indicator in snapshot_lower for indicator in indicators)
 
-    def setup(self, service: str = "google"):
-        """Interactive authentication setup for specified service"""
+    def setup(self, service: str = "google", use_fresh_profile: bool = False):
+        """Interactive authentication setup for specified service
+
+        Args:
+            service: Service to authenticate ("google" or "zlibrary")
+            use_fresh_profile: If True, use a fresh browser profile to allow adding new accounts
+        """
         # Use Patchright for Google auth (bypasses "browser not secure" check)
         if service == "google":
-            return self._setup_google_with_patchright()
+            return self._setup_google_with_patchright(use_fresh_profile=use_fresh_profile)
 
         # For other services, use agent-browser
         return self._setup_with_agent_browser(service)
 
-    def _setup_google_with_patchright(self):
+    def _setup_google_with_patchright(self, use_fresh_profile: bool = False):
         """Setup Google auth using Patchright (anti-detection browser)"""
         try:
             from patchright_auth import authenticate_with_patchright
@@ -296,7 +308,9 @@ class AuthManager:
             return self._setup_with_agent_browser("google")
 
         try:
-            success, email, storage_state = authenticate_with_patchright()
+            success, email, storage_state = authenticate_with_patchright(
+                use_fresh_profile=use_fresh_profile
+            )
             if success and storage_state:
                 if email:
                     # Check if account already exists
@@ -860,7 +874,8 @@ class AuthManager:
     def _accounts_add(self):
         """Add a new account via authentication."""
         print("🔐 Adding new Google account...")
-        success = self.setup(service="google")
+        # Use fresh profile to force account selection instead of auto-login
+        success = self.setup(service="google", use_fresh_profile=True)
         if success:
             active = self.account_manager.get_active_account()
             if active:
@@ -871,6 +886,8 @@ class AuthManager:
         try:
             account = self.account_manager.switch_account(identifier)
             print(f"✅ Switched to: [{account.index}] {account.email}")
+            # Update symlink to point to new active account
+            self._ensure_storage_state_symlink(quiet=True)
         except ValueError as e:
             print(f"❌ {e}")
             print("   Run: auth_manager.py accounts list")
