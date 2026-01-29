@@ -230,7 +230,7 @@ class AuthManager:
         if not active_auth_file or not active_auth_file.exists():
             # Fall back to legacy single-account auth file (e.g., data/auth/google.json)
             legacy_auth_file = self._auth_file("google")
-            if legacy_auth_file is not None and legacy_auth_file.exists():
+            if legacy_auth_file.exists():
                 active_auth_file = legacy_auth_file
             else:
                 # No usable auth available; remove any stale storage_state.json
