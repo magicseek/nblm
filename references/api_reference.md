@@ -95,18 +95,22 @@ python scripts/run.py auth_manager.py setup
 # Check status
 python scripts/run.py auth_manager.py status
 
-# Re-authenticate
-python scripts/run.py auth_manager.py reauth
-
 # Clear authentication
 python scripts/run.py auth_manager.py clear
+
+# Multi-account management
+python scripts/run.py auth_manager.py accounts list
+python scripts/run.py auth_manager.py accounts add
+python scripts/run.py auth_manager.py accounts switch 1
 ```
 
 **Commands:**
 - `setup`: Initial authentication (browser MUST be visible)
 - `status`: Check if authenticated
-- `reauth`: Clear and re-setup
 - `clear`: Remove all auth data
+- `accounts`: Multi-account management (list, add, switch, remove)
+
+Note: Expired credentials are automatically re-authenticated when running commands.
 
 ### cleanup_manager.py
 Clean skill data with preservation options.
@@ -282,7 +286,7 @@ Free Google accounts: 50 queries/day
 
 Solutions:
 1. Wait for reset (midnight PST)
-2. Switch accounts with `reauth`
+2. Switch accounts with `accounts switch`
 3. Use multiple Google accounts
 
 ## Advanced Patterns
