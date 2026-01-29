@@ -331,7 +331,7 @@ async def ask_notebooklm_async(question: str, notebook_url: str, show_browser: b
         print(f"⚠️ API failed: {result['error']['message']}, falling back to browser...")
 
     # Fall back to browser
-    return _ask_via_browser_sync(question, notebook_url, show_browser, auth, account_index)
+    return _ask_via_browser_sync(question, notebook_url, show_browser, auth, account_mgr, account_index)
 
 
 def ask_notebooklm(question: str, notebook_url: str, show_browser: bool = False) -> dict:
@@ -339,7 +339,7 @@ def ask_notebooklm(question: str, notebook_url: str, show_browser: bool = False)
     return asyncio.run(ask_notebooklm_async(question, notebook_url, show_browser))
 
 
-def _ask_via_browser_sync(question: str, notebook_url: str, show_browser: bool, auth: AuthManager, account_index: Optional[int] = None) -> dict:
+def _ask_via_browser_sync(question: str, notebook_url: str, show_browser: bool, auth: AuthManager, account_mgr: AccountManager, account_index: Optional[int] = None) -> dict:
     """
     Ask a question to NotebookLM via browser automation.
 
@@ -348,6 +348,7 @@ def _ask_via_browser_sync(question: str, notebook_url: str, show_browser: bool, 
         notebook_url: URL of the notebook
         show_browser: Whether to show browser UI
         auth: AuthManager instance
+        account_mgr: AccountManager instance
         account_index: Optional account index to use for this notebook
 
     Returns:
@@ -355,7 +356,6 @@ def _ask_via_browser_sync(question: str, notebook_url: str, show_browser: bool, 
     """
     # Switch to notebook's account if specified
     if account_index is not None:
-        account_mgr = AccountManager()
         account = account_mgr.get_account_by_index(account_index)
         if account:
             current_active = account_mgr.get_active_account()

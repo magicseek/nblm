@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any, Union, Tuple
 
 from config import (
     GOOGLE_AUTH_DIR,
@@ -18,6 +18,22 @@ from config import (
     AUTH_DIR,
     LIBRARY_FILE,
 )
+
+
+def validate_email(email: str) -> Tuple[bool, str]:
+    """Validate an email address.
+    
+    Args:
+        email: Email address to validate
+        
+    Returns:
+        Tuple of (is_valid, error_message). error_message is empty if valid.
+    """
+    if not email or not email.strip():
+        return False, "Email cannot be empty"
+    if "@" not in email:
+        return False, "Email must contain '@' character"
+    return True, ""
 
 
 @dataclass
@@ -212,10 +228,9 @@ class AccountManager:
             ValueError: If account already exists or email is invalid
         """
         # Validate email
-        if not email or not email.strip():
-            raise ValueError("Email cannot be empty")
-        if "@" not in email:
-            raise ValueError("Email must contain '@' character")
+        is_valid, error_msg = validate_email(email)
+        if not is_valid:
+            raise ValueError(error_msg)
         
         email = email.strip()
         

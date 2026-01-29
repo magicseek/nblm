@@ -30,7 +30,7 @@ from config import (
     AGENT_BROWSER_IDLE_TIMEOUT_SECONDS
 )
 from agent_browser_client import AgentBrowserClient, AgentBrowserError
-from account_manager import AccountManager
+from account_manager import AccountManager, validate_email
 
 
 def _pid_is_alive(pid: int) -> bool:
@@ -342,11 +342,9 @@ class AuthManager:
                     # No email extracted - prompt user and validate input
                     while True:
                         email = input("   Enter your Google email: ").strip()
-                        if not email:
-                            print("   Email cannot be empty. Please try again.")
-                            continue
-                        if "@" not in email:
-                            print("   Please enter a valid email address containing '@'.")
+                        is_valid, error_msg = validate_email(email)
+                        if not is_valid:
+                            print(f"   {error_msg} Please try again.")
                             continue
                         break
                     
@@ -1021,9 +1019,9 @@ def main():
         success = auth.validate(service=getattr(args, 'service', None) or "google")
         sys.exit(0 if success else 1)
     elif args.command == 'reauth':
-        service = getattr(args, 'service', None) or "google"
-        auth.clear(service=None if getattr(args, 'service', None) is None else service)
-        success = auth.setup(service=service)
+        service_arg = getattr(args, 'service', None)
+        auth.clear(service=service_arg)
+        success = auth.setup(service=service_arg or "google")
         sys.exit(0 if success else 1)
     elif args.command == 'clear':
         auth.clear(service=getattr(args, 'service', None))
