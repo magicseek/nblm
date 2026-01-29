@@ -355,13 +355,12 @@ def _ask_via_browser_sync(question: str, notebook_url: str, show_browser: bool, 
     """
     # If notebook is associated with a specific account, switch to it first
     if account_index is not None:
-        from account_manager import AccountManager
-        account_mgr = AccountManager()
-        account = account_mgr.get_account_by_index(account_index)
+        # Use the auth object's account_manager to maintain consistency
+        account = auth.account_manager.get_account_by_index(account_index)
         if account:
-            active = account_mgr.get_active_account()
+            active = auth.account_manager.get_active_account()
             if not active or active.index != account_index:
-                account_mgr.switch_account(account_index)
+                auth.account_manager.switch_account(account_index)
                 auth._ensure_storage_state_symlink(quiet=True)
                 print(f"   ✓ Switched to account [{account.index}] {account.email} for browser fallback")
     
