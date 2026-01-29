@@ -420,7 +420,6 @@ python scripts/run.py auth_manager.py setup --service google
 python scripts/run.py auth_manager.py setup --service zlibrary
 python scripts/run.py auth_manager.py status                   # Show all services
 python scripts/run.py auth_manager.py status --service zlibrary
-python scripts/run.py auth_manager.py reauth --service google  # Re-authenticate
 python scripts/run.py auth_manager.py clear --service zlibrary # Clear auth
 
 # Multi-Account Management (Google)

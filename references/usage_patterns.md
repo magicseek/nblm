@@ -126,15 +126,14 @@ python scripts/run.py ask_question.py --question "Same question"
 ```bash
 # If authentication fails
 python scripts/run.py auth_manager.py status
-python scripts/run.py auth_manager.py reauth  # Browser visible!
+python scripts/run.py auth_manager.py setup  # Browser visible - will auto-reauth if expired
 
 # If browser crashes
 python scripts/run.py cleanup_manager.py --preserve-library
 python scripts/run.py auth_manager.py setup  # Browser visible!
 
-# If rate limited
-# Wait or switch accounts
-python scripts/run.py auth_manager.py reauth  # Login with different account
+# If rate limited - switch to another account
+python scripts/run.py auth_manager.py accounts switch 2
 ```
 
 ## Pattern 7: Batch Processing

@@ -41,9 +41,7 @@ python scripts/run.py auth_manager.py status
 # Setup authentication (browser MUST be visible!)
 python scripts/run.py auth_manager.py setup
 # User must manually log in to Google
-
-# If setup fails, try re-authentication
-python scripts/run.py auth_manager.py reauth
+# Note: Expired auth will automatically trigger re-authentication
 ```
 
 #### Authentication expires frequently
@@ -86,8 +84,8 @@ pkill -f agent-browser
 # Clean browser state
 python scripts/run.py cleanup_manager.py --confirm --preserve-library
 
-# Re-authenticate
-python scripts/run.py auth_manager.py reauth
+# Re-setup authentication (will auto-reauth if needed)
+python scripts/run.py auth_manager.py setup
 ```
 
 #### Daemon socket stuck
@@ -141,10 +139,10 @@ python scripts/run.py auth_manager.py setup
 **Option 3: Rotate accounts**
 ```python
 # Use multiple accounts
-accounts = ["account1", "account2"]
-for account in accounts:
+accounts = [1, 2]  # Account indices
+for account_index in accounts:
     # Switch account on rate limit
-    subprocess.run(["python", "scripts/run.py", "auth_manager.py", "reauth"])
+    subprocess.run(["python", "scripts/run.py", "auth_manager.py", "accounts", "switch", str(account_index)])
 ```
 
 ### Notebook Access Issues
@@ -327,7 +325,7 @@ python scripts/run.py auth_manager.py status
 | Error | Cause | Solution |
 |-------|-------|----------|
 | Not authenticated | No valid auth | `run.py auth_manager.py setup` |
-| Authentication expired | Session old | `run.py auth_manager.py reauth` |
+| Authentication expired | Session old | Auto-reauth triggered on next command |
 | Invalid credentials | Wrong account | Check Google account |
 | 2FA required | Security challenge | Complete in visible browser |
 
@@ -378,7 +376,7 @@ ls -la ~/.claude/skills/notebooklm/data/
 A: Web UI has no network access. Use local Claude Code.
 
 **Q: Can I use multiple Google accounts?**
-A: Yes, use `run.py auth_manager.py reauth` to switch.
+A: Yes, use `run.py auth_manager.py accounts add` to add accounts and `accounts switch` to switch.
 
 **Q: How to increase rate limit?**
 A: Use multiple accounts or upgrade to Google Workspace.
