@@ -30,8 +30,7 @@ from config import (
     AGENT_BROWSER_IDLE_TIMEOUT_SECONDS
 )
 from agent_browser_client import AgentBrowserClient, AgentBrowserError
-from account_manager import AccountManager
-
+from account_manager import AccountManager, validate_email
 
 
 def _pid_is_alive(pid: int) -> bool:
@@ -231,7 +230,7 @@ class AuthManager:
         if not active_auth_file or not active_auth_file.exists():
             # Fall back to legacy single-account auth file (e.g., data/auth/google.json)
             legacy_auth_file = self._auth_file("google")
-            if legacy_auth_file is not None and legacy_auth_file.exists():
+            if legacy_auth_file.exists():
                 active_auth_file = legacy_auth_file
             else:
                 # No usable auth available; remove any stale storage_state.json
@@ -300,7 +299,7 @@ class AuthManager:
             service: Service to authenticate ("google" or "zlibrary")
             use_fresh_profile: If True, use a fresh browser profile to allow adding new accounts
         """
-        # Normalize service to default
+        # Normalize service to default if None
         service = service or "google"
         
         # Use Patchright for Google auth (bypasses "browser not secure" check)
@@ -343,11 +342,9 @@ class AuthManager:
                     # No email extracted - prompt user and validate input
                     while True:
                         email = input("   Enter your Google email: ").strip()
-                        if not email:
-                            print("   Email cannot be empty. Please try again.")
-                            continue
-                        if "@" not in email:
-                            print("   Please enter a valid email address containing '@'.")
+                        is_valid, error_msg = validate_email(email)
+                        if not is_valid:
+                            print(f"   {error_msg} Please try again.")
                             continue
                         break
                     
@@ -977,7 +974,7 @@ def main():
     parser = argparse.ArgumentParser(description='Manage NotebookLM authentication')
     subparsers = parser.add_subparsers(dest='command', help='Command to run')
 
-    # Existing commands with --service option
+    # Existing commands
     setup_parser = subparsers.add_parser('setup', help='Setup authentication')
     setup_parser.add_argument('--service', choices=list(AuthManager.SERVICES.keys()),
                              help='Auth service (default: google)')
@@ -1022,9 +1019,9 @@ def main():
         success = auth.validate(service=getattr(args, 'service', None) or "google")
         sys.exit(0 if success else 1)
     elif args.command == 'reauth':
-        service = getattr(args, 'service', None) or "google"
-        auth.clear(service=None if getattr(args, 'service', None) is None else service)
-        success = auth.setup(service=service)
+        service_arg = getattr(args, 'service', None)
+        auth.clear(service=service_arg)
+        success = auth.setup(service=service_arg or "google")
         sys.exit(0 if success else 1)
     elif args.command == 'clear':
         auth.clear(service=getattr(args, 'service', None))

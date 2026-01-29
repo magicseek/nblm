@@ -340,7 +340,7 @@ def authenticate_with_patchright(
                         page.goto(NOTEBOOKLM_URL, wait_until="domcontentloaded")
                         time.sleep(2)  # Wait for page to load
                     except Exception:
-                        # Navigation errors are non-fatal; continue with extraction from current context.
+                        # Navigation errors are non-fatal; we may still have valid auth cookies from other windows.
                         pass
 
                 # Extract email and storage state before browser closes
