@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 
 from config import (
     GOOGLE_AUTH_DIR,
@@ -125,7 +125,7 @@ class AccountManager:
             return account.file_path
         return None
 
-    def switch_account(self, identifier: str | int) -> AccountInfo:
+    def switch_account(self, identifier: Union[str, int]) -> "AccountInfo":
         """Switch to a different account by index or email.
 
         Args:
@@ -209,8 +209,16 @@ class AccountManager:
             The newly created AccountInfo
 
         Raises:
-            ValueError: If account already exists
+            ValueError: If account already exists or email is invalid
         """
+        # Validate email
+        if not email or not email.strip():
+            raise ValueError("Email cannot be empty")
+        if "@" not in email:
+            raise ValueError("Email must be a valid email address containing '@'")
+        
+        email = email.strip()
+        
         if self.account_exists(email):
             raise ValueError(f"Account already exists: {email}")
 
@@ -243,7 +251,7 @@ class AccountManager:
             added_at=datetime.now(timezone.utc).isoformat(),
         )
 
-    def remove_account(self, identifier: str | int) -> bool:
+    def remove_account(self, identifier: Union[str, int]) -> bool:
         """Remove an account by index or email.
 
         Args:

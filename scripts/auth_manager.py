@@ -30,7 +30,8 @@ from config import (
     AGENT_BROWSER_IDLE_TIMEOUT_SECONDS
 )
 from agent_browser_client import AgentBrowserClient, AgentBrowserError
-from account_manager import AccountManager, AccountInfo
+from account_manager import AccountManager
+
 
 
 def _pid_is_alive(pid: int) -> bool:
@@ -108,10 +109,10 @@ class AuthManager:
         }
     }
 
-    def __init__(self):
+    def __init__(self, account_manager: Optional[AccountManager] = None):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         AUTH_DIR.mkdir(parents=True, exist_ok=True)
-        self.account_manager = AccountManager()
+        self.account_manager = account_manager if account_manager is not None else AccountManager()
         # Ensure symlink is up-to-date after migration (silent)
         self._ensure_storage_state_symlink(quiet=True)
 
@@ -228,7 +229,17 @@ class AuthManager:
         # Get active account auth file
         active_auth_file = self.account_manager.get_active_auth_file()
         if not active_auth_file or not active_auth_file.exists():
-            return
+            # Fall back to legacy single-account auth file (e.g., data/auth/google.json)
+            legacy_auth_file = self._auth_file("google")
+            if legacy_auth_file is not None and legacy_auth_file.exists():
+                active_auth_file = legacy_auth_file
+            else:
+                # No usable auth available; remove any stale storage_state.json
+                if storage_state_path.exists() or storage_state_path.is_symlink():
+                    storage_state_path.unlink()
+                    if not quiet:
+                        print("   ✓ Removed stale storage_state.json (no active auth)")
+                return
 
         # Remove existing symlink or file if it exists
         if storage_state_path.exists() or storage_state_path.is_symlink():
@@ -289,6 +300,9 @@ class AuthManager:
             service: Service to authenticate ("google" or "zlibrary")
             use_fresh_profile: If True, use a fresh browser profile to allow adding new accounts
         """
+        # Normalize service to default
+        service = service or "google"
+        
         # Use Patchright for Google auth (bypasses "browser not secure" check)
         if service == "google":
             return self._setup_google_with_patchright(use_fresh_profile=use_fresh_profile)
@@ -326,8 +340,17 @@ class AuthManager:
                         account = self.account_manager.add_account(email, storage_state)
                         print(f"   ✓ Added new account [{account.index}]: {email}")
                 else:
-                    # No email extracted - prompt user
-                    email = input("   Enter your Google email: ").strip()
+                    # No email extracted - prompt user and validate input
+                    while True:
+                        email = input("   Enter your Google email: ").strip()
+                        if not email:
+                            print("   Email cannot be empty. Please try again.")
+                            continue
+                        if "@" not in email:
+                            print("   Please enter a valid email address containing '@'.")
+                            continue
+                        break
+                    
                     if self.account_manager.account_exists(email):
                         existing = self.account_manager.get_account_by_email(email)
                         self.account_manager.update_account_credentials(existing.index, storage_state)
@@ -919,6 +942,8 @@ class AuthManager:
 
         if self.account_manager.remove_account(identifier):
             print(f"✅ Removed account: {target.email}")
+            # Ensure storage_state.json symlink is updated after removal
+            self._ensure_storage_state_symlink(quiet=True)
         else:
             print(f"❌ Failed to remove account")
 
@@ -952,12 +977,27 @@ def main():
     parser = argparse.ArgumentParser(description='Manage NotebookLM authentication')
     subparsers = parser.add_subparsers(dest='command', help='Command to run')
 
-    # Existing commands
-    subparsers.add_parser('setup', help='Setup authentication')
-    subparsers.add_parser('status', help='Show authentication status')
-    subparsers.add_parser('validate', help='Validate authentication')
-    subparsers.add_parser('reauth', help='Re-authenticate')
-    subparsers.add_parser('clear', help='Clear authentication data')
+    # Existing commands with --service option
+    setup_parser = subparsers.add_parser('setup', help='Setup authentication')
+    setup_parser.add_argument('--service', choices=list(AuthManager.SERVICES.keys()),
+                             help='Auth service (default: google)')
+    
+    status_parser = subparsers.add_parser('status', help='Show authentication status')
+    status_parser.add_argument('--service', choices=list(AuthManager.SERVICES.keys()),
+                              help='Auth service (default: google)')
+    
+    validate_parser = subparsers.add_parser('validate', help='Validate authentication')
+    validate_parser.add_argument('--service', choices=list(AuthManager.SERVICES.keys()),
+                                help='Auth service (default: google)')
+    
+    reauth_parser = subparsers.add_parser('reauth', help='Re-authenticate')
+    reauth_parser.add_argument('--service', choices=list(AuthManager.SERVICES.keys()),
+                              help='Auth service (default: google)')
+    
+    clear_parser = subparsers.add_parser('clear', help='Clear authentication data')
+    clear_parser.add_argument('--service', choices=list(AuthManager.SERVICES.keys()),
+                             help='Auth service (default: google)')
+    
     subparsers.add_parser('stop-daemon', help='Stop browser daemon')
     subparsers.add_parser('watchdog-status', help='Show watchdog status')
 
@@ -967,10 +1007,6 @@ def main():
                                  help='Account action')
     accounts_parser.add_argument('identifier', nargs='?', help='Account index or email')
 
-    # Service argument for existing commands
-    parser.add_argument('--service', choices=list(AuthManager.SERVICES.keys()),
-                        help='Auth service (default: google)')
-
     args = parser.parse_args()
     auth = AuthManager()
 
@@ -978,20 +1014,20 @@ def main():
         success = auth.handle_accounts_command(args.action, args.identifier)
         sys.exit(0 if success else 1)
     elif args.command == 'setup':
-        success = auth.setup(service=args.service)
+        success = auth.setup(service=getattr(args, 'service', None))
         sys.exit(0 if success else 1)
     elif args.command == 'status':
-        auth.status(service=args.service)
+        auth.status(service=getattr(args, 'service', None))
     elif args.command == 'validate':
-        success = auth.validate(service=args.service or "google")
+        success = auth.validate(service=getattr(args, 'service', None) or "google")
         sys.exit(0 if success else 1)
     elif args.command == 'reauth':
-        service = args.service or "google"
-        auth.clear(service=None if args.service is None else service)
+        service = getattr(args, 'service', None) or "google"
+        auth.clear(service=None if getattr(args, 'service', None) is None else service)
         success = auth.setup(service=service)
         sys.exit(0 if success else 1)
     elif args.command == 'clear':
-        auth.clear(service=args.service)
+        auth.clear(service=getattr(args, 'service', None))
     elif args.command == 'stop-daemon':
         success = auth.stop_daemon()
         sys.exit(0 if success else 1)

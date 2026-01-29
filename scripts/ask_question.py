@@ -331,7 +331,7 @@ async def ask_notebooklm_async(question: str, notebook_url: str, show_browser: b
         print(f"⚠️ API failed: {result['error']['message']}, falling back to browser...")
 
     # Fall back to browser
-    return _ask_via_browser_sync(question, notebook_url, show_browser, auth)
+    return _ask_via_browser_sync(question, notebook_url, show_browser, auth, account_index)
 
 
 def ask_notebooklm(question: str, notebook_url: str, show_browser: bool = False) -> dict:
@@ -339,13 +339,32 @@ def ask_notebooklm(question: str, notebook_url: str, show_browser: bool = False)
     return asyncio.run(ask_notebooklm_async(question, notebook_url, show_browser))
 
 
-def _ask_via_browser_sync(question: str, notebook_url: str, show_browser: bool, auth: AuthManager) -> dict:
+def _ask_via_browser_sync(question: str, notebook_url: str, show_browser: bool, auth: AuthManager, account_index: Optional[int] = None) -> dict:
     """
     Ask a question to NotebookLM via browser automation.
+
+    Args:
+        question: The question to ask
+        notebook_url: The notebook URL
+        show_browser: Whether to show the browser
+        auth: The AuthManager instance
+        account_index: Optional account index for notebook-associated account
 
     Returns:
         dict with status, answer, and optional error
     """
+    # If notebook is associated with a specific account, switch to it first
+    if account_index is not None:
+        from account_manager import AccountManager
+        account_mgr = AccountManager()
+        account = account_mgr.get_account_by_index(account_index)
+        if account:
+            active = account_mgr.get_active_account()
+            if not active or active.index != account_index:
+                account_mgr.switch_account(account_index)
+                auth._ensure_storage_state_symlink(quiet=True)
+                print(f"   ✓ Switched to account [{account.index}] {account.email} for browser fallback")
+    
     client = AgentBrowserClient(session_id="notebooklm", headed=show_browser)
 
     try:
