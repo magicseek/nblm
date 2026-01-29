@@ -906,14 +906,14 @@ class AuthManager:
             print(f"❌ Account not found: {identifier}")
             return
 
-        print(f"⚠️ 危险操作检测！")
-        print(f"操作类型：Remove account credentials")
-        print(f"影响范围：{target.email}")
-        print(f"风险评估：Credentials will be deleted")
+        print("⚠️ Dangerous operation detected!")
+        print("Operation: Remove account credentials")
+        print(f"Target account: {target.email}")
+        print("Risk: Credentials will be deleted")
         print()
-        confirm = input("请确认是否继续？[y/N]: ").strip().lower()
+        confirm = input("Are you sure you want to continue? [y/N]: ").strip().lower()
 
-        if confirm not in ("y", "yes", "是", "确认"):
+        if confirm not in ("y", "yes"):
             print("❌ Cancelled")
             return
 
