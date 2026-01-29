@@ -158,6 +158,10 @@ Answers are source-grounded with citations from your uploaded documents.
 | Command | Description |
 |---------|-------------|
 | `/nblm login` | Authenticate with Google |
+| `/nblm accounts` | List all Google accounts |
+| `/nblm accounts add` | Add a new Google account |
+| `/nblm accounts switch <id>` | Switch active account (by index or email) |
+| `/nblm accounts remove <id>` | Remove an account |
 | `/nblm status` | Show auth and library status |
 | `/nblm local` | List notebooks in local library |
 | `/nblm remote` | List all notebooks from NotebookLM API |
@@ -268,8 +272,10 @@ nblm uses a hybrid approach combining API-first operations with browser automati
 | **scripts/run.py** | Entry point that auto-manages venv and dependencies |
 
 **Data storage** (in `data/`):
-- `library.json` — Your notebook metadata
-- `auth/google.json` — Google authentication state
+- `library.json` — Your notebook metadata (with account associations)
+- `auth/google/` — Multi-account Google authentication
+  - `index.json` — Account index and active account
+  - `<n>-<email>.json` — Per-account credentials
 - `auth/zlibrary.json` — Z-Library authentication state
 
 ---
@@ -305,7 +311,7 @@ Additional dependencies:
 
 ## Limitations
 
-- **Rate limits** — Free tier allows ~50 queries/day per Google account
+- **Rate limits** — Free tier allows ~50 queries/day per Google account (use multiple accounts to increase limits)
 - **No session persistence** — Each query is independent (no "previous answer" context)
 - **Manual notebook creation** — You must create notebooks and upload docs via [notebooklm.google.com](https://notebooklm.google.com)
 
