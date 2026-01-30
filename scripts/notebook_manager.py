@@ -96,7 +96,8 @@ class NotebookLibrary:
         topics: List[str],
         content_types: Optional[List[str]] = None,
         use_cases: Optional[List[str]] = None,
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
+        notebook_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Add a new notebook to the library
@@ -109,12 +110,14 @@ class NotebookLibrary:
             content_types: Types of content (optional)
             use_cases: When to use this notebook (optional)
             tags: Additional tags for organization (optional)
+            notebook_id: Explicit notebook ID (optional, auto-generated from name if not provided)
 
         Returns:
             The created notebook object
         """
-        # Generate ID from name (normalizes Unicode characters)
-        notebook_id = _normalize_id(name)
+        # Use provided ID or generate from name
+        if notebook_id is None:
+            notebook_id = _normalize_id(name)
 
         # Check for duplicates
         if notebook_id in self.notebooks:

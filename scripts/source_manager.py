@@ -221,9 +221,12 @@ class SourceManager:
                         name=title,
                         description=description,
                         topics=[source_label],
+                        notebook_id=notebook_id,  # Use actual UUID from NotebookLM
                     )
-                except Exception:
-                    pass
+                    library.select_notebook(notebook_id)
+                    print(f"✅ Activated notebook: {title}")
+                except Exception as e:
+                    print(f"⚠️ Warning: Could not activate notebook: {e}")
 
             if not source_ids:
                 return {"success": False, "error": "Upload failed"}
@@ -318,6 +321,13 @@ async def async_main():
 
     manager = SourceManager()
 
+    if args.command == "add" and args.file:
+        path = Path(args.file).resolve()
+        if path.is_dir():
+            args.command = "sync"
+            args.folder = str(path)
+            args.file = None
+
     if args.command == "add":
         if args.url:
             # For URLs, derive title from URL
@@ -362,6 +372,12 @@ async def async_main():
                 nb_result = await wrapper.create_notebook(folder_name)
                 notebook_id = nb_result["id"]
             print(f"📓 Created new notebook: {folder_name}")
+
+            library = NotebookLibrary()
+            url = f"https://notebooklm.google.com/notebook/{notebook_id}"
+            library.add_notebook(url=url, name=folder_name, description=f"Synced from {folder_name}", topics=[], notebook_id=notebook_id)
+            library.select_notebook(notebook_id)
+            print(f"✅ Activated notebook: {folder_name}")
 
         if not notebook_id:
             print("❌ No notebook specified and create-new not specified.", file=sys.stderr)
