@@ -28,10 +28,12 @@ def _resolve_notebook_target(args, file_title: str) -> tuple[Optional[str], bool
 
     Returns:
         (notebook_id, create_new) tuple:
-        - (id, False) = use existing notebook with given ID
+        - (id, False) = use existing notebook with given ID (real NotebookLM UUID)
         - (None, True) = create new notebook
         - Raises SystemExit if invalid combination
     """
+    from notebook_manager import extract_notebook_id
+    
     library = NotebookLibrary()
 
     # Explicit notebook ID takes priority
@@ -47,6 +49,15 @@ def _resolve_notebook_target(args, file_title: str) -> tuple[Optional[str], bool
             print("   Or use --create-new to create a new notebook", file=sys.stderr)
             raise SystemExit(1)
         print(f"📓 Using active notebook: \"{active.get('name', 'Unnamed')}\"")
+        
+        # Extract real NotebookLM UUID from URL (not library ID)
+        url = active.get("url")
+        if url:
+            real_uuid = extract_notebook_id(url)
+            if real_uuid:
+                return (real_uuid, False)
+        
+        # Fallback: if no URL or extraction failed, use library ID (may not be UUID)
         return (active.get("id"), False)
 
     # --create-new flag

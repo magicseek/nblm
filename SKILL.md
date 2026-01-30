@@ -485,7 +485,7 @@ python scripts/run.py source_manager.py sync "/path/to/docs" --rebuild   # Force
 
 **Folder Sync:**
 - Scans folder for supported types: PDF, TXT, MD, DOCX, HTML, EPUB
-- Creates `.nblm-sync.json` tracking file in synced folder
+- Tracks sync state internally (no per-folder tracking file to manage)
 - Sync strategy: add new, update modified (delete + re-upload), skip unchanged
 - Multi-account aware (tracks which Google account was used)
 **Note:** One of `--use-active`, `--create-new`, or `--notebook-id` is REQUIRED.

@@ -4,7 +4,7 @@
 
 **Goal:** Add folder sync capability to nblm that can scan a directory, detect new/modified/unchanged files, and sync them to a NotebookLM notebook with proper tracking.
 
-**Architecture:** New `SyncManager` class in `scripts/sync_manager.py` that handles scanning, hashing, comparing, and syncing files. Tracking file `.nblm-sync.json` stored in the synced folder root records file hashes and source IDs. Command extends `source_manager.py` with `sync` subcommand.
+**Architecture:** New `SyncManager` class in `scripts/sync_manager.py` that handles scanning, hashing, comparing, and syncing files. Sync state stored under `data/sync/<hash>.sync.json` records file hashes and source IDs. Command extends `source_manager.py` with `sync` subcommand.
 
 **Tech Stack:** Python 3.10+, notebooklm-py for API operations, hashlib for SHA-256, json for tracking file, argparse for CLI.
 
