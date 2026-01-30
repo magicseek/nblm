@@ -225,7 +225,68 @@ class SyncManager:
             - tracked_info: previous tracking info (if exists)
             - source_id: existing source ID for update/delete (if exists)
         """
-        return []
+        plan = []
+
+        # Check each local file
+        for path, local_info in local_files.items():
+            # Compute hash for comparison
+            abs_path = Path(local_info["absolute_path"])
+            current_hash = self.compute_file_hash(abs_path)
+            local_info["hash"] = current_hash
+
+            if path not in self.state.files:
+                # New file - needs addition
+                plan.append({
+                    "action": SyncAction.ADD.value,
+                    "path": path,
+                    "local_info": local_info,
+                    "tracked_info": None,
+                    "source_id": None,
+                })
+            else:
+                tracked = self.state.files[path]
+
+                if tracked.hash != current_hash:
+                    # Content changed - needs update
+                    if tracked.source_id:
+                        plan.append({
+                            "action": SyncAction.UPDATE.value,
+                            "path": path,
+                            "local_info": local_info,
+                            "tracked_info": tracked,
+                            "source_id": tracked.source_id,
+                        })
+                    else:
+                        # No existing source, treat as add
+                        plan.append({
+                            "action": SyncAction.ADD.value,
+                            "path": path,
+                            "local_info": local_info,
+                            "tracked_info": tracked,
+                            "source_id": None,
+                        })
+                else:
+                    # Unchanged - skip
+                    plan.append({
+                        "action": SyncAction.SKIP.value,
+                        "path": path,
+                        "local_info": local_info,
+                        "tracked_info": tracked,
+                        "source_id": tracked.source_id,
+                    })
+
+        # Check for deleted files (in tracking but not in local)
+        for path in self.state.files:
+            if path not in local_files:
+                plan.append({
+                    "action": SyncAction.DELETE.value,
+                    "path": path,
+                    "local_info": None,
+                    "tracked_info": self.state.files[path],
+                    "source_id": self.state.files[path].source_id,
+                })
+
+        return plan
 
     async def execute_sync(
         self,
