@@ -53,10 +53,16 @@ async def cmd_delete(args):
 
 async def cmd_rename(args):
     """Rename a notebook."""
+    from notebook_manager import NotebookLibrary
+
     notebook_id = args.id or get_active_notebook_id()
     async with NotebookLMWrapper() as wrapper:
         result = await wrapper.rename_notebook(notebook_id, args.name)
         print(json.dumps(result, indent=2, ensure_ascii=False))
+
+        library = NotebookLibrary()
+        library.update_notebook(notebook_id, name=result.get('title', args.name))
+        print(f"✅ Updated local library: {result.get('title', args.name)}")
 
 
 async def cmd_summary(args):
@@ -192,6 +198,30 @@ async def cmd_ask(args):
         print(result["text"])
 
 
+async def cmd_sync(args):
+    """Sync a local folder to the notebook."""
+    from sync_manager import SyncManager
+
+    folder_path = str(Path(args.folder).resolve())
+    notebook_id = args.notebook_id or get_active_notebook_id()
+
+    # Get active account info
+    from account_manager import AccountManager
+    account_mgr = AccountManager()
+    active_account = account_mgr.get_active_account()
+    if not active_account:
+        raise ValueError("No active Google account. Run: /nblm accounts switch")
+
+    mgr = SyncManager(folder_path)
+    result = await mgr.execute_sync(
+        notebook_id=notebook_id,
+        account_index=active_account.index,
+        account_email=active_account.email,
+        dry_run=args.dry_run,
+    )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
 def main():
     parser = argparse.ArgumentParser(description="NBLM CLI - NotebookLM Command Line Interface")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -269,6 +299,12 @@ def main():
     p.add_argument("question", help="Question to ask")
     p.add_argument("--notebook-id", help="Notebook ID")
 
+    # Sync command
+    p = subparsers.add_parser("sync", help="Sync a local folder to the notebook")
+    p.add_argument("folder", help="Path to local folder to sync")
+    p.add_argument("--notebook-id", help="Notebook ID")
+    p.add_argument("--dry-run", action="store_true", help="Show plan without executing")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -293,6 +329,7 @@ def main():
         "source-delete": cmd_source_delete,
         "podcast": cmd_podcast,
         "ask": cmd_ask,
+        "sync": cmd_sync,
     }
 
     try:

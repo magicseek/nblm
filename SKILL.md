@@ -45,8 +45,9 @@ All dependencies and authentication are handled automatically by `run.py`:
 | Command | Description |
 |---------|-------------|
 | `sources [--id ID]` | List sources in notebook |
-| `upload <file> [--use-active\|--create-new]` | Upload local file (PDF, TXT, MD, DOCX) |
-| `upload-zlib <url> [--use-active\|--create-new]` | Download from Z-Library and upload |
+| `upload <file>` | Upload a single file |
+| `upload <folder>` | Sync a folder of files to NotebookLM |
+| `upload-zlib <url>` | Download from Z-Library and upload |
 | `upload-url <url>` | Add URL as source |
 | `upload-youtube <url>` | Add YouTube video as source |
 | `upload-text <title> [--content TEXT]` | Add text as source |
@@ -58,8 +59,10 @@ All dependencies and authentication are handled automatically by `run.py`:
 
 **Upload options:**
 - `--use-active` - Upload to the currently active notebook
-- `--create-new` - Create a new notebook named after the file
+- `--create-new` - Create a new notebook named after the file/folder
 - `--notebook-id <id>` - Upload to a specific notebook
+- `--dry-run` - Show sync plan without executing (folder sync)
+- `--rebuild` - Force rebuild tracking file (folder sync)
 
 **Important:** When user runs upload without specifying a target, ASK them first:
 > "Would you like to upload to the active notebook, or create a new notebook?"
@@ -125,6 +128,14 @@ $IF($ARGUMENTS,
   **upload <file>** → First ASK user: "Upload to active notebook or create new?" Then:
     - Active: `python scripts/run.py source_manager.py add --file "<file>" --use-active`
     - New: `python scripts/run.py source_manager.py add --file "<file>" --create-new`
+
+  **upload <folder>** → Sync a folder:
+    - First ASK user: "Sync to active notebook, create new, or specify notebook?"
+    - Active: `python scripts/run.py source_manager.py sync "<folder>" --use-active`
+    - New: `python scripts/run.py source_manager.py sync "<folder>" --create-new`
+    - Specific: `python scripts/run.py source_manager.py sync "<folder>" --notebook-id ID`
+    - Dry-run: `python scripts/run.py source_manager.py sync "<folder>" --dry-run`
+    - Rebuild: `python scripts/run.py source_manager.py sync "<folder>" --rebuild`
 
   **upload-zlib <url>** → First ASK user: "Upload to active notebook or create new?" Then:
     - Active: `python scripts/run.py source_manager.py add --url "<url>" --use-active`
@@ -461,7 +472,22 @@ python scripts/run.py source_manager.py add --file "/path/to/book.pdf" --noteboo
 # Z-Library download and upload
 python scripts/run.py source_manager.py add --url "https://zh.zlib.li/book/..." --use-active
 python scripts/run.py source_manager.py add --url "https://zh.zlib.li/book/..." --create-new
+
+# Sync a folder (new!)
+python scripts/run.py source_manager.py sync "/path/to/docs" --use-active
+python scripts/run.py source_manager.py sync "/path/to/docs" --create-new
+python scripts/run.py source_manager.py sync "/path/to/docs" --notebook-id NOTEBOOK_ID
+
+# Sync options (new!)
+python scripts/run.py source_manager.py sync "/path/to/docs" --dry-run    # Preview only
+python scripts/run.py source_manager.py sync "/path/to/docs" --rebuild   # Force re-hash all files
 ```
+
+**Folder Sync:**
+- Scans folder for supported types: PDF, TXT, MD, DOCX, HTML, EPUB
+- Tracks sync state internally (no per-folder tracking file to manage)
+- Sync strategy: add new, update modified (delete + re-upload), skip unchanged
+- Multi-account aware (tracks which Google account was used)
 **Note:** One of `--use-active`, `--create-new`, or `--notebook-id` is REQUIRED.
 Uploads wait for NotebookLM processing and print progress as `Ready: N/T`. Press Ctrl+C to stop waiting.
 Local file uploads use browser automation and require Google authentication.

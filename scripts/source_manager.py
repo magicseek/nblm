@@ -15,10 +15,12 @@ from typing import List, Optional, Union
 from agent_browser_client import AgentBrowserClient
 from auth_manager import AuthManager
 from config import DEFAULT_SESSION_ID
-from notebook_manager import NotebookLibrary
+from notebook_manager import NotebookLibrary, extract_notebook_id
 from notebooklm_wrapper import NotebookLMWrapper, NotebookLMError
+from sync_manager import SyncManager
 from zlibrary.downloader import ZLibraryDownloader
 from zlibrary import epub_converter
+from account_manager import AccountManager
 
 
 def _resolve_notebook_target(args, file_title: str) -> tuple[Optional[str], bool]:
@@ -26,7 +28,7 @@ def _resolve_notebook_target(args, file_title: str) -> tuple[Optional[str], bool
 
     Returns:
         (notebook_id, create_new) tuple:
-        - (id, False) = use existing notebook with given ID
+        - (id, False) = use existing notebook with given ID (real NotebookLM UUID)
         - (None, True) = create new notebook
         - Raises SystemExit if invalid combination
     """
@@ -45,6 +47,15 @@ def _resolve_notebook_target(args, file_title: str) -> tuple[Optional[str], bool
             print("   Or use --create-new to create a new notebook", file=sys.stderr)
             raise SystemExit(1)
         print(f"📓 Using active notebook: \"{active.get('name', 'Unnamed')}\"")
+
+        # Extract real NotebookLM UUID from URL (not library ID)
+        url = active.get("url")
+        if url:
+            real_uuid = extract_notebook_id(url)
+            if real_uuid:
+                return (real_uuid, False)
+
+        # Fallback: if no URL or extraction failed, use library ID (may not be UUID)
         return (active.get("id"), False)
 
     # --create-new flag
@@ -219,9 +230,12 @@ class SourceManager:
                         name=title,
                         description=description,
                         topics=[source_label],
+                        notebook_id=notebook_id,  # Use actual UUID from NotebookLM
                     )
-                except Exception:
-                    pass
+                    library.select_notebook(notebook_id)
+                    print(f"✅ Activated notebook: {title}")
+                except Exception as e:
+                    print(f"⚠️ Warning: Could not activate notebook: {e}")
 
             if not source_ids:
                 return {"success": False, "error": "Upload failed"}
@@ -288,7 +302,7 @@ class SourceManager:
 
 async def async_main():
     parser = argparse.ArgumentParser(description="Add sources to NotebookLM")
-    parser.add_argument("command", choices=["add"], help="Command to run")
+    parser.add_argument("command", choices=["add", "sync"], help="Command to run")
     parser.add_argument("--url", help="Source URL")
     parser.add_argument("--file", help="Local file path")
     parser.add_argument("--notebook-id", help="Existing notebook ID")
@@ -296,6 +310,13 @@ async def async_main():
                         help="Upload to currently active notebook")
     parser.add_argument("--create-new", action="store_true",
                         help="Create a new notebook for the upload")
+
+    # Sync command arguments
+    parser.add_argument("folder", nargs="?", help="Folder path to sync")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Show sync plan without executing")
+    parser.add_argument("--rebuild", action="store_true",
+                        help="Force rebuild tracking file (re-hash all files)")
 
     args = parser.parse_args()
 
@@ -309,6 +330,13 @@ async def async_main():
 
     manager = SourceManager()
 
+    if args.command == "add" and args.file:
+        path = Path(args.file).resolve()
+        if path.is_dir():
+            args.command = "sync"
+            args.folder = str(path)
+            args.file = None
+
     if args.command == "add":
         if args.url:
             # For URLs, derive title from URL
@@ -321,6 +349,63 @@ async def async_main():
             result = await manager.add_from_file(Path(args.file), notebook_id)
         else:
             raise SystemExit("Provide --url or --file")
+
+        print(json.dumps(result, indent=2))
+
+    elif args.command == "sync":
+        if not args.folder:
+            print("❌ No folder specified.", file=sys.stderr)
+            print("   Usage: python scripts/run.py source_manager.py sync <folder>", file=sys.stderr)
+            raise SystemExit(1)
+
+        folder_path = Path(args.folder).resolve()
+        if not folder_path.is_dir():
+            print(f"❌ Folder not found: {folder_path}", file=sys.stderr)
+            raise SystemExit(1)
+
+        # Resolve notebook target
+        folder_name = folder_path.stem
+        notebook_id, create_new = _resolve_notebook_target(args, folder_name)
+
+        # Get active account
+        account_mgr = AccountManager()
+        active = account_mgr.get_active_account()
+        if not active:
+            print("❌ No active Google account.", file=sys.stderr)
+            print("   Run: python scripts/run.py auth_manager.py accounts list", file=sys.stderr)
+            raise SystemExit(1)
+
+        # Create notebook if needed
+        if create_new:
+            async with NotebookLMWrapper() as wrapper:
+                nb_result = await wrapper.create_notebook(folder_name)
+                notebook_id = nb_result["id"]
+            print(f"📓 Created new notebook: {folder_name}")
+
+            library = NotebookLibrary()
+            url = f"https://notebooklm.google.com/notebook/{notebook_id}"
+            library.add_notebook(url=url, name=folder_name, description=f"Synced from {folder_name}", topics=[], notebook_id=notebook_id)
+            library.select_notebook(notebook_id)
+            print(f"✅ Activated notebook: {folder_name}")
+
+        if not notebook_id:
+            print("❌ No notebook specified and create-new not specified.", file=sys.stderr)
+            raise SystemExit(1)
+
+        # Create sync manager and run sync
+        sync_mgr = SyncManager(str(folder_path))
+
+        # Rebuild option - delete tracking file
+        if args.rebuild and sync_mgr.tracking_file.exists():
+            sync_mgr.tracking_file.unlink()
+            print(f"🗑️ Cleared tracking file for rebuild")
+
+        result = await sync_mgr.execute_sync(
+            notebook_id=notebook_id,
+            account_index=active.index,
+            account_email=active.email,
+            dry_run=args.dry_run,
+        )
 
         print(json.dumps(result, indent=2))
 
