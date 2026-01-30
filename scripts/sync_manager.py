@@ -13,7 +13,13 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
+from config import DATA_DIR
+
 SUPPORTED_EXTENSIONS = {'.pdf', '.txt', '.md', '.docx', '.html', '.epub'}
+
+# Ensure sync directory exists
+SYNC_DIR = DATA_DIR / "sync"
+SYNC_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class SyncAction(Enum):
@@ -50,11 +56,11 @@ class SyncState:
 class SyncManager:
     """Manages folder-to-notebook synchronization."""
 
-    TRACKING_FILENAME = ".nblm-sync.json"
-
     def __init__(self, folder_path: str):
         self.folder_path = Path(folder_path).resolve()
-        self.tracking_file = self.folder_path / self.TRACKING_FILENAME
+        # Store tracking file in data/sync/ (not in the synced folder!)
+        folder_hash = hashlib.md5(str(self.folder_path).encode()).hexdigest()[:12]
+        self.tracking_file = SYNC_DIR / f"{folder_hash}.sync.json"
         self.state = SyncState(folder_path=str(self.folder_path))
 
     def load_state(self) -> bool:
@@ -169,8 +175,8 @@ class SyncManager:
             dirs[:] = [d for d in dirs if not d.startswith('.')]
 
             for filename in filenames:
-                # Skip tracking file and hidden files
-                if filename.startswith('.') or filename == self.TRACKING_FILENAME:
+                # Skip hidden files
+                if filename.startswith('.'):
                     continue
 
                 path = Path(root) / filename
