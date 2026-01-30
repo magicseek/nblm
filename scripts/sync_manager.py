@@ -109,7 +109,7 @@ class SyncManager:
             # Backup corrupted file
             broken = self.tracking_file.with_suffix(".json.broken")
             if not broken.exists():
-                self.tracking_file.rename(broken)
+                self.tracking_file.replace(broken)
                 print(f"   Backed up corrupted file to: {broken}")
             # Create fresh state
             self.state = SyncState(folder_path=str(self.folder_path))
@@ -145,7 +145,7 @@ class SyncManager:
             # Atomic write via temp file
             temp_file = self.tracking_file.with_suffix(".json.tmp")
             temp_file.write_text(json.dumps(data, indent=2))
-            temp_file.rename(self.tracking_file)
+            temp_file.replace(self.tracking_file)
             return True
 
         except Exception as e:
@@ -189,8 +189,10 @@ class SyncManager:
 
                 try:
                     stat = path.stat()
-                    files[str(relative_path)] = {
-                        "path": str(relative_path),
+                    # Normalize paths to POSIX format for cross-platform portability
+                    posix_path = relative_path.as_posix()
+                    files[posix_path] = {
+                        "path": posix_path,
                         "absolute_path": str(path),
                         "filename": path.stem,
                         "extension": ext,

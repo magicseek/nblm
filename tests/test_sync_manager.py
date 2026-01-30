@@ -1,11 +1,8 @@
-import asyncio
-import hashlib
 import json
 import tempfile
 import unittest
 from pathlib import Path
 import sys
-from unittest import mock
 
 repo_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo_root / "scripts"))
@@ -59,11 +56,15 @@ class SyncManagerFolderTests(unittest.TestCase):
         """Test that tracking file is stored in data/sync/, not in synced folder."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mgr = SyncManager(tmpdir)
-            # Tracking file should be in data/sync/, not in tmpdir
-            self.assertTrue(str(mgr.tracking_file).startswith("/"))
-            self.assertIn("data/sync", str(mgr.tracking_file))
+            tracking_path = Path(mgr.tracking_file)
+            # Tracking file path should be absolute
+            self.assertTrue(tracking_path.is_absolute())
+            # Tracking file should be in the repository's data/sync directory, not in tmpdir
+            repo_root = Path(__file__).resolve().parents[1]
+            expected_sync_dir = repo_root / "data" / "sync"
+            self.assertEqual(tracking_path.parent, expected_sync_dir)
             # Should NOT be in the synced folder
-            self.assertFalse(str(mgr.tracking_file).startswith(tmpdir))
+            self.assertNotIn(Path(tmpdir).resolve(), tracking_path.parents)
 
     def test_tracking_file_name_is_hash_based(self):
         """Test that tracking file uses hash-based filename."""
@@ -88,14 +89,18 @@ class SyncManagerFolderTests(unittest.TestCase):
 
     def test_same_path_resolves_to_same_tracking_file(self):
         """Test that the same path (with resolve()) gets the same tracking file."""
-        path1 = Path("/tmp/test/folder")
-        path2 = Path("/tmp/test/../test/folder").resolve()
-        mgr1 = SyncManager(str(path1))
-        mgr2 = SyncManager(str(path2))
-        # Both should resolve to the same path
-        self.assertEqual(mgr1.folder_path, mgr2.folder_path)
-        # And therefore have the same tracking file
-        self.assertEqual(mgr1.tracking_file, mgr2.tracking_file)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            path1 = base / "test" / "folder"
+            path2 = base / "test" / ".." / "test" / "folder"
+            # Ensure the target directory exists so resolve() behaves consistently
+            path1.mkdir(parents=True, exist_ok=True)
+            mgr1 = SyncManager(str(path1))
+            mgr2 = SyncManager(str(path2.resolve()))
+            # Both should resolve to the same path
+            self.assertEqual(mgr1.folder_path, mgr2.folder_path)
+            # And therefore have the same tracking file
+            self.assertEqual(mgr1.tracking_file, mgr2.tracking_file)
 
 
 class SyncManagerStateTests(unittest.TestCase):
