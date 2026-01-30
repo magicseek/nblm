@@ -306,7 +306,38 @@ class SyncManager:
         Returns:
             Dict with sync results: add, update, skip, delete, errors
         """
-        return {"add": 0, "update": 0, "skip": 0, "delete": 0, "errors": []}
+        from notebooklm_wrapper import NotebookLMWrapper
+
+        self.load_state()
+        self._warn_if_account_mismatch(account_index, account_email)
+
+        local_files = self.scan_folder()
+        plan = self.get_sync_plan(local_files)
+
+        self._print_sync_plan(plan, dry_run)
+        if dry_run:
+            return self._summarize_plan(plan)
+
+        async with NotebookLMWrapper() as wrapper:
+            result = await self._execute_plan(wrapper, plan, notebook_id)
+
+        self._update_state_after_sync(notebook_id, account_index, account_email)
+        return result
+
+    def _warn_if_account_mismatch(self, account_index: int, account_email: str):
+        """Warn if current account differs from tracking file account."""
+        if self.state.account_index is not None and self.state.account_index != account_index:
+            print(f"⚠️ Tracking file was created with account [{self.state.account_index}] {self.state.account_email}")
+            print(f"   Current active account: [{account_index}] {account_email}")
+            print("   Continuing with new account (tracking file will be updated)")
+
+    def _update_state_after_sync(self, notebook_id: str, account_index: int, account_email: str):
+        """Update tracking state after successful sync."""
+        self.state.notebook_id = notebook_id
+        self.state.account_index = account_index
+        self.state.account_email = account_email
+        self.state.last_sync_at = datetime.now(timezone.utc).isoformat()
+        self.save_state()
 
     async def _execute_plan(
         self,
@@ -326,7 +357,81 @@ class SyncManager:
         Returns:
             Dict with sync results
         """
-        return {"add": 0, "update": 0, "skip": 0, "delete": 0, "errors": []}
+        result = {"add": 0, "update": 0, "skip": 0, "delete": 0, "errors": []}
+
+        for item in plan:
+            action = item["action"]
+            path = item["path"]
+            local_info = item["local_info"]
+
+            if action == SyncAction.SKIP.value:
+                result["skip"] += 1
+                continue
+
+            if dry_run:
+                print(f"   [DRY-RUN] {action.upper()} {path}")
+                continue
+
+            try:
+                if action == SyncAction.ADD.value:
+                    print(f"   ➕ Adding: {path}")
+                    source_id = await self._upload_file(wrapper, notebook_id, local_info)
+                    self._update_tracked_file(path, local_info, source_id)
+                    result["add"] += 1
+
+                elif action == SyncAction.UPDATE.value:
+                    print(f"   🔄 Updating: {path}")
+                    old_source_id = item["source_id"]
+                    if old_source_id:
+                        await wrapper.delete_source(notebook_id, old_source_id)
+                    source_id = await self._upload_file(wrapper, notebook_id, local_info)
+                    self._update_tracked_file(path, local_info, source_id)
+                    result["update"] += 1
+
+                elif action == SyncAction.DELETE.value:
+                    print(f"   🗑️ Deleting remote: {path}")
+                    source_id = item["source_id"]
+                    if source_id:
+                        await wrapper.delete_source(notebook_id, source_id)
+                    del self.state.files[path]
+                    result["delete"] += 1
+
+            except Exception as e:
+                print(f"   ❌ Error {action} {path}: {e}")
+                result["errors"].append({"path": path, "action": action, "error": str(e)})
+
+        return result
+
+    async def _upload_file(self, wrapper, notebook_id: str, local_info: dict) -> Optional[str]:
+        """Upload a single file to NotebookLM.
+
+        Args:
+            wrapper: NotebookLMWrapper instance
+            notebook_id: Target notebook ID
+            local_info: File info dict with absolute_path
+
+        Returns:
+            Source ID from upload response
+        """
+        file_path = Path(local_info["absolute_path"])
+        upload_result = await wrapper.add_file(notebook_id, file_path)
+        return upload_result.get("source_id")
+
+    def _update_tracked_file(self, path: str, local_info: dict, source_id: Optional[str]):
+        """Update or create a tracked file entry in state.
+
+        Args:
+            path: Relative file path
+            local_info: File info dict with filename, hash, modified_at
+            source_id: Source ID from NotebookLM
+        """
+        self.state.files[path] = TrackedFile(
+            filename=local_info["filename"],
+            hash=local_info["hash"],
+            modified_at=local_info["modified_at"],
+            source_id=source_id,
+            uploaded_at=datetime.now(timezone.utc).isoformat(),
+        )
 
     def _print_sync_plan(self, plan: list[dict], dry_run: bool = False):
         """Print formatted sync plan.
@@ -335,7 +440,18 @@ class SyncManager:
             plan: List of sync actions
             dry_run: If True, show dry-run indicator
         """
-        pass
+        prefix = "🔍 [DRY-RUN] " if dry_run else "📋 Sync Plan:"
+        print(f"\n{prefix}")
+
+        counts = {"add": 0, "update": 0, "skip": 0, "delete": 0}
+        for item in plan:
+            action = item["action"]
+            path = item["path"]
+            counts[action] += 1
+            symbol = {"add": "➕", "update": "🔄", "skip": "✓", "delete": "🗑️"}[action]
+            print(f"   {symbol} {path:<30} [{action.upper()}]")
+
+        print(f"\n   Total: {counts['add']} add, {counts['update']} update, {counts['skip']} skip, {counts['delete']} delete")
 
     def _summarize_plan(self, plan: list[dict]) -> dict:
         """Summarize plan without executing.
@@ -346,4 +462,7 @@ class SyncManager:
         Returns:
             Dict with counts by action type
         """
-        return {"add": 0, "update": 0, "skip": 0, "delete": 0, "errors": []}
+        result = {"add": 0, "update": 0, "skip": 0, "delete": 0, "errors": []}
+        for item in plan:
+            result[item["action"]] += 1
+        return result
