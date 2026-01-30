@@ -158,7 +158,44 @@ class SyncManager:
             - modified_at: ISO timestamp
             - size: file size in bytes
         """
-        return {}
+        files = {}
+
+        if not self.folder_path.exists():
+            print(f"⚠️ Folder does not exist: {self.folder_path}")
+            return files
+
+        for root, dirs, filenames in os.walk(self.folder_path):
+            # Skip hidden directories
+            dirs[:] = [d for d in dirs if not d.startswith('.')]
+
+            for filename in filenames:
+                # Skip tracking file and hidden files
+                if filename.startswith('.') or filename == self.TRACKING_FILENAME:
+                    continue
+
+                path = Path(root) / filename
+                relative_path = path.relative_to(self.folder_path)
+
+                # Check extension
+                ext = path.suffix.lower()
+                if ext not in SUPPORTED_EXTENSIONS:
+                    continue
+
+                try:
+                    stat = path.stat()
+                    files[str(relative_path)] = {
+                        "path": str(relative_path),
+                        "absolute_path": str(path),
+                        "filename": path.stem,
+                        "extension": ext,
+                        "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                        "size": stat.st_size,
+                    }
+                except OSError as e:
+                    print(f"⚠️ Could not access {path}: {e}")
+
+        print(f"📁 Found {len(files)} supported files in {self.folder_path}")
+        return files
 
     def compute_file_hash(self, file_path: Path) -> str:
         """Compute SHA-256 hash of a file.
