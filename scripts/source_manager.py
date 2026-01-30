@@ -15,7 +15,7 @@ from typing import List, Optional, Union
 from agent_browser_client import AgentBrowserClient
 from auth_manager import AuthManager
 from config import DEFAULT_SESSION_ID
-from notebook_manager import NotebookLibrary
+from notebook_manager import NotebookLibrary, extract_notebook_id
 from notebooklm_wrapper import NotebookLMWrapper, NotebookLMError
 from sync_manager import SyncManager
 from zlibrary.downloader import ZLibraryDownloader
@@ -32,8 +32,6 @@ def _resolve_notebook_target(args, file_title: str) -> tuple[Optional[str], bool
         - (None, True) = create new notebook
         - Raises SystemExit if invalid combination
     """
-    from notebook_manager import extract_notebook_id
-    
     library = NotebookLibrary()
 
     # Explicit notebook ID takes priority
@@ -49,14 +47,14 @@ def _resolve_notebook_target(args, file_title: str) -> tuple[Optional[str], bool
             print("   Or use --create-new to create a new notebook", file=sys.stderr)
             raise SystemExit(1)
         print(f"📓 Using active notebook: \"{active.get('name', 'Unnamed')}\"")
-        
+
         # Extract real NotebookLM UUID from URL (not library ID)
         url = active.get("url")
         if url:
             real_uuid = extract_notebook_id(url)
             if real_uuid:
                 return (real_uuid, False)
-        
+
         # Fallback: if no URL or extraction failed, use library ID (may not be UUID)
         return (active.get("id"), False)
 
