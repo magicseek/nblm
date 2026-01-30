@@ -109,7 +109,7 @@ class SyncManager:
             # Backup corrupted file
             broken = self.tracking_file.with_suffix(".json.broken")
             if not broken.exists():
-                self.tracking_file.rename(broken)
+                self.tracking_file.replace(broken)
                 print(f"   Backed up corrupted file to: {broken}")
             # Create fresh state
             self.state = SyncState(folder_path=str(self.folder_path))
