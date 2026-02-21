@@ -269,9 +269,11 @@ async def cmd_download(args):
                 artifact_type=args.type,
             )
         else:
-            # Download latest audio if no artifact ID specified
+            # Download latest artifact if no artifact ID specified
             if args.type == "audio":
                 path = await wrapper.download_audio(notebook_id, args.output)
+            elif args.type == "slide-deck":
+                path = await wrapper.download_slide_deck(notebook_id, args.output)
             else:
                 print(f"❌ Please specify --artifact-id for {args.type} downloads")
                 sys.exit(1)

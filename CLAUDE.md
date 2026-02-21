@@ -74,24 +74,21 @@ python scripts/run.py cleanup_manager.py                    # Preview
 python scripts/run.py cleanup_manager.py --confirm          # Execute
 python scripts/run.py cleanup_manager.py --preserve-library # Keep notebooks
 
-# Artifacts (Audio/Podcast Generation)
+# Artifacts (Audio/Podcast & Slide Deck Generation)
 python scripts/run.py artifact_manager.py list                              # List all artifacts
 python scripts/run.py artifact_manager.py list --type audio                 # List audio only
+python scripts/run.py artifact_manager.py list --type slide-deck            # List slide decks only
 python scripts/run.py artifact_manager.py get <artifact-id>                 # Get artifact details
 python scripts/run.py artifact_manager.py delete <artifact-id>              # Delete artifact
-python scripts/run.py artifact_manager.py generate --wait --output podcast.mp3  # Generate & download
+python scripts/run.py artifact_manager.py generate --wait --output podcast.mp3  # Generate & download audio
 python scripts/run.py artifact_manager.py generate --format DEBATE --length SHORT
 python scripts/run.py artifact_manager.py generate --instructions "Focus on key findings"
+python scripts/run.py artifact_manager.py generate-slides --wait --output presentation.pdf  # Generate & download slides
+python scripts/run.py artifact_manager.py generate-slides --format PRESENTER_SLIDES --length SHORT
+python scripts/run.py artifact_manager.py generate-slides --instructions "Focus on key findings"
 python scripts/run.py artifact_manager.py status --task-id <task-id>        # Check generation status
 python scripts/run.py artifact_manager.py download ./output.mp3             # Download latest audio
-
-# Slide Deck Generation
-python scripts/run.py slides_manager.py generate --wait --output presentation.pdf  # Generate & download
-python scripts/run.py slides_manager.py generate --format PRESENTER_SLIDES --length SHORT
-python scripts/run.py slides_manager.py generate --instructions "Focus on key findings"
-python scripts/run.py slides_manager.py status --task-id <task-id>          # Check generation status
-python scripts/run.py slides_manager.py download ./presentation.pdf         # Download latest slide deck
-python scripts/run.py slides_manager.py list                                # List all slide decks
+python scripts/run.py artifact_manager.py download ./presentation.pdf --type slide-deck  # Download latest slide deck
 ```
 
 ## Architecture
@@ -103,7 +100,7 @@ scripts/
 ├── auth_manager.py       # Multi-service authentication and session persistence
 ├── notebook_manager.py   # CRUD operations for notebook library (library.json)
 ├── source_manager.py     # Source ingestion (file/Z-Library)
-├── artifact_manager.py   # Audio/podcast generation and artifact management
+├── artifact_manager.py   # Audio/podcast/slides/infographic generation and artifact management
 ├── agent_browser_client.py # Unix socket client for agent-browser daemon
 ├── cleanup_manager.py    # Data cleanup with preservation options
 ├── config.py             # Configuration management
