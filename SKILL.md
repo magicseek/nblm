@@ -169,9 +169,13 @@ $IF($ARGUMENTS,
 
   **debate** → `python scripts/run.py artifact_manager.py generate --format DEBATE <args>`
 
-  **slides** → `python scripts/run.py artifact_manager.py generate-slides <args>`
+  **slides** → `python scripts/run.py slides_manager.py generate <args>`
 
-  **slides-download [output-path]** → `python scripts/run.py artifact_manager.py download "<output-path>" --type slide-deck`
+  **slides-download [output-path]** → `python scripts/run.py slides_manager.py download "<output-path>"`
+
+  **slides-list** → `python scripts/run.py slides_manager.py list`
+
+  **slides-status <task-id>** → `python scripts/run.py slides_manager.py status --task-id "<task-id>"`
 
   **infographic** → `python scripts/run.py artifact_manager.py generate-infographic <args>`
 

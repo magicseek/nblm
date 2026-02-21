@@ -84,6 +84,14 @@ python scripts/run.py artifact_manager.py generate --format DEBATE --length SHOR
 python scripts/run.py artifact_manager.py generate --instructions "Focus on key findings"
 python scripts/run.py artifact_manager.py status --task-id <task-id>        # Check generation status
 python scripts/run.py artifact_manager.py download ./output.mp3             # Download latest audio
+
+# Slide Deck Generation
+python scripts/run.py slides_manager.py generate --wait --output presentation.pdf  # Generate & download
+python scripts/run.py slides_manager.py generate --format PRESENTER_SLIDES --length SHORT
+python scripts/run.py slides_manager.py generate --instructions "Focus on key findings"
+python scripts/run.py slides_manager.py status --task-id <task-id>          # Check generation status
+python scripts/run.py slides_manager.py download ./presentation.pdf         # Download latest slide deck
+python scripts/run.py slides_manager.py list                                # List all slide decks
 ```
 
 ## Architecture
