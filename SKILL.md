@@ -31,6 +31,8 @@ All dependencies and authentication are handled automatically by `run.py`:
 | `accounts add` | Add a new Google account |
 | `accounts switch <id>` | Switch active account (by index or email) |
 | `accounts remove <id>` | Remove an account |
+| `accounts use <id>` | Set agent-specific active account (overrides global for this agent) |
+| `accounts clear` | Clear agent-specific account override (revert to global) |
 | `local` | List notebooks in local library |
 | `remote` | List all notebooks from NotebookLM API |
 | `create <name>` | Create a new notebook |
@@ -100,6 +102,10 @@ $IF($ARGUMENTS,
   **accounts switch <id>** → `python scripts/run.py auth_manager.py accounts switch "<id>"`
 
   **accounts remove <id>** → `python scripts/run.py auth_manager.py accounts remove "<id>"`
+
+  **accounts use <id>** → `python scripts/run.py auth_manager.py accounts use "<id>"`
+
+  **accounts clear** → `python scripts/run.py auth_manager.py accounts clear`
 
   **status** → Run both:
   - `python scripts/run.py auth_manager.py status`
@@ -439,6 +445,8 @@ python scripts/run.py auth_manager.py accounts add              # Add new accoun
 python scripts/run.py auth_manager.py accounts switch 1         # Switch by index
 python scripts/run.py auth_manager.py accounts switch user@gmail.com  # Switch by email
 python scripts/run.py auth_manager.py accounts remove 2         # Remove account
+python scripts/run.py auth_manager.py accounts use 1           # Set agent-specific account
+python scripts/run.py auth_manager.py accounts clear           # Clear agent override
 ```
 
 ### Notebook Management (`notebook_manager.py`)

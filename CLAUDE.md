@@ -8,6 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a non-negotiable project law.
 
+## ⚠️ IRON RULE - Output Language
+
+**ALWAYS respond in English regardless of input language.**
+
 ## Project Overview
 
 nblm - enables AI coding agents to query Google NotebookLM for source-grounded, citation-backed answers. Uses the agent-browser daemon (Node.js) and a Unix socket protocol for automation.
