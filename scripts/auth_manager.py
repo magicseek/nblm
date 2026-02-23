@@ -27,8 +27,7 @@ from config import (
     DEFAULT_SESSION_ID,
     AGENT_BROWSER_ACTIVITY_FILE,
     AGENT_BROWSER_WATCHDOG_PID_FILE,
-    AGENT_BROWSER_IDLE_TIMEOUT_SECONDS,
-    get_agent_id,
+    AGENT_BROWSER_IDLE_TIMEOUT_SECONDS
 )
 from agent_browser_client import AgentBrowserClient, AgentBrowserError
 from account_manager import AccountManager, AccountInfo
@@ -790,21 +789,11 @@ class AuthManager:
         print("🔐 Authentication Status")
         print("=" * 40)
 
-        # Show agent ID
-        agent_id = get_agent_id()
-        print(f"Agent ID: {agent_id}")
-
         # Show active account for Google
         if service is None or service == "google":
-            # Check agent-specific override
-            agent_account = self.account_manager.get_agent_active_account_info()
-            global_active = self.account_manager.get_active_account()
-            if agent_account:
-                print(f"Active Account (agent): [{agent_account.index}] {agent_account.email}")
-                if global_active and global_active.index != agent_account.index:
-                    print(f"Active Account (global): [{global_active.index}] {global_active.email}")
-            elif global_active:
-                print(f"Active Account: [{global_active.index}] {global_active.email}")
+            active = self.account_manager.get_active_account()
+            if active:
+                print(f"Active Account: [{active.index}] {active.email}")
             else:
                 accounts = self.account_manager.list_accounts()
                 if accounts:
@@ -883,14 +872,6 @@ class AuthManager:
                 print("   Usage: auth_manager.py accounts reauth <index|email>")
                 return False
             self._accounts_reauth(identifier)
-        elif action == "use":
-            if not identifier:
-                print("❌ Error: Provide account index or email")
-                print("   Usage: auth_manager.py accounts use <index|email>")
-                return False
-            self._accounts_use(identifier)
-        elif action == "clear":
-            self._accounts_clear()
         else:
             print(f"❌ Unknown accounts action: {action}")
             return False
@@ -1013,23 +994,6 @@ class AuthManager:
         if success:
             print(f"✅ Re-authenticated: [{target.index}] {target.email}")
 
-    def _accounts_use(self, identifier: str):
-        """Set agent-specific active account without changing global active account."""
-        try:
-            account = self.account_manager.set_agent_active_account(identifier)
-            agent_id = get_agent_id()
-            print(f"✅ Agent [{agent_id}] now using: [{account.index}] {account.email}")
-            self._ensure_storage_state_symlink(quiet=True)
-        except ValueError as e:
-            print(f"❌ {e}")
-            print("   Run: auth_manager.py accounts list")
-
-    def _accounts_clear(self):
-        """Clear agent-specific active account override."""
-        self.account_manager.clear_agent_active_account()
-        agent_id = get_agent_id()
-        print(f"✅ Agent [{agent_id}] account override cleared (will use global active account)")
-
 
 def main():
     parser = argparse.ArgumentParser(description='Manage NotebookLM authentication')
@@ -1066,7 +1030,7 @@ def main():
 
     # New accounts subcommand
     accounts_parser = subparsers.add_parser('accounts', help='Manage multiple Google accounts')
-    accounts_parser.add_argument('action', choices=['list', 'add', 'switch', 'remove', 'reauth', 'use', 'clear'],
+    accounts_parser.add_argument('action', choices=['list', 'add', 'switch', 'remove', 'reauth'],
                                  help='Account action')
     accounts_parser.add_argument('identifier', nargs='?', help='Account index or email')
 

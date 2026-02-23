@@ -17,8 +17,6 @@ from config import (
     GOOGLE_AUTH_FILE,
     AUTH_DIR,
     LIBRARY_FILE,
-    get_agent_id,
-    get_agent_active_account_file,
 )
 
 
@@ -46,7 +44,6 @@ class AccountManager:
         """Initialize AccountManager and run migration if needed."""
         self._ensure_directories()
         self._migrate_if_needed()
-        self._agent_id = get_agent_id()
 
     def _ensure_directories(self) -> None:
         """Create necessary directories."""
@@ -105,15 +102,7 @@ class AccountManager:
         return sorted(accounts, key=lambda a: a.index)
 
     def get_active_account(self) -> Optional[AccountInfo]:
-        """Get the currently active account.
-
-        Checks agent-specific override first, then falls back to global active account.
-        """
-        # Agent-specific override takes priority
-        agent_account = self.get_agent_active_account_info()
-        if agent_account is not None:
-            return agent_account
-
+        """Get the currently active account."""
         data = self._load_index()
         active_index = data.get("active_account")
         if active_index is None:
@@ -135,62 +124,6 @@ class AccountManager:
         if account:
             return account.file_path
         return None
-
-    def _load_agent_active_account(self) -> Optional[int]:
-        """Load the agent-specific active account index."""
-        f = get_agent_active_account_file()
-        if not f.exists():
-            return None
-        try:
-            data = json.loads(f.read_text())
-            return data.get("active_account")
-        except (json.JSONDecodeError, IOError):
-            return None
-
-    def _save_agent_active_account(self, index: int) -> None:
-        """Persist the agent-specific active account index."""
-        f = get_agent_active_account_file()
-        f.write_text(json.dumps({"active_account": index}))
-
-    def get_agent_active_account_info(self) -> Optional["AccountInfo"]:
-        """Return the AccountInfo for the agent-specific active account, if set."""
-        agent_index = self._load_agent_active_account()
-        if agent_index is None:
-            return None
-        return self.get_account_by_index(agent_index)
-
-    def set_agent_active_account(self, identifier: str) -> "AccountInfo":
-        """Set the agent-specific active account by index or email.
-
-        Raises ValueError if account not found.
-        """
-        data = self._load_index()
-        target = None
-        for acc in data["accounts"]:
-            if isinstance(identifier, int) or (isinstance(identifier, str) and identifier.isdigit()):
-                if acc["index"] == int(identifier):
-                    target = acc
-                    break
-            else:
-                if acc["email"].lower() == identifier.lower():
-                    target = acc
-                    break
-        if not target:
-            raise ValueError(f"Account not found: {identifier}")
-        self._save_agent_active_account(target["index"])
-        file_path = GOOGLE_AUTH_DIR / target["file"]
-        return AccountInfo(
-            index=target["index"],
-            email=target["email"],
-            file_path=file_path,
-            added_at=target.get("added_at", ""),
-        )
-
-    def clear_agent_active_account(self) -> None:
-        """Remove the agent-specific active account override."""
-        f = get_agent_active_account_file()
-        if f.exists():
-            f.unlink()
 
     def switch_account(self, identifier: str | int) -> AccountInfo:
         """Switch to a different account by index or email.
@@ -224,10 +157,6 @@ class AccountManager:
         # Update active account
         data["active_account"] = target_account["index"]
         self._save_index(data)
-
-        # Also persist agent-specific override when running as a named agent
-        if self._agent_id != "default":
-            self._save_agent_active_account(target_account["index"])
 
         file_path = GOOGLE_AUTH_DIR / target_account["file"]
         return AccountInfo(

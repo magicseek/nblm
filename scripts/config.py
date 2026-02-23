@@ -62,27 +62,3 @@ RESPONSE_SELECTORS = [
 LOGIN_TIMEOUT_MINUTES = 10
 QUERY_TIMEOUT_SECONDS = 120
 PAGE_LOAD_TIMEOUT = 30000
-
-
-def get_agent_id() -> str:
-    """Return the agent ID for multi-agent isolation.
-
-    Priority: NBLM_AGENT_ID > OPENCLAW_AGENT > AGENT_NAME > 'default'
-    """
-    for env_var in ("NBLM_AGENT_ID", "OPENCLAW_AGENT", "AGENT_NAME"):
-        value = os.environ.get(env_var, "").strip()
-        if value:
-            return value
-    return "default"
-
-
-def get_agent_config_dir() -> Path:
-    """Return the per-agent config directory, creating it if needed."""
-    agent_dir = DATA_DIR / "agents" / get_agent_id()
-    agent_dir.mkdir(parents=True, exist_ok=True)
-    return agent_dir
-
-
-def get_agent_active_account_file() -> Path:
-    """Return the path to the agent-specific active account file."""
-    return get_agent_config_dir() / "active_account.json"
