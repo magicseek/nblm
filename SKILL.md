@@ -30,6 +30,7 @@ All dependencies and authentication are handled automatically by `run.py`:
 | `accounts` | List all Google accounts |
 | `accounts add` | Add a new Google account |
 | `accounts switch <id>` | Switch active account (by index or email) |
+| `accounts remove <id>` | Remove a Google account |
 | `accounts use <id>` | Set agent-specific active account (OpenClaw isolation) |
 | `accounts clear` | Clear agent-specific account override |
 | `local` | List notebooks in local library |

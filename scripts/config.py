@@ -6,6 +6,7 @@ Centralizes constants, selectors, and paths
 from pathlib import Path
 from typing import Optional
 import os
+import re
 import tempfile
 
 # Paths
@@ -23,6 +24,22 @@ GOOGLE_AUTH_INDEX = GOOGLE_AUTH_DIR / "index.json"
 
 # Legacy path (for migration detection)
 GOOGLE_AUTH_FILE_LEGACY = AUTH_DIR / "google.json"
+
+
+def _sanitize_agent_id(agent_id: str) -> str:
+    """Sanitize agent ID for use as a filesystem path component.
+
+    Removes path traversal characters and other unsafe chars, limits length.
+    Example: "my/agent/../evil" -> "myagentevil"
+    """
+    # Remove path separators and traversal sequences
+    sanitized = re.sub(r"[/\\.]", "-", agent_id)
+    # Remove any other characters that are unsafe in filenames
+    sanitized = re.sub(r"[^a-zA-Z0-9_\-]", "", sanitized)
+    # Collapse multiple dashes
+    sanitized = re.sub(r"-{2,}", "-", sanitized).strip("-")
+    # Limit length
+    return sanitized[:64] or "default"
 
 
 def get_agent_id() -> Optional[str]:
@@ -47,7 +64,7 @@ def get_agent_config_dir() -> Path:
     """
     agent_id = get_agent_id()
     if agent_id:
-        return DATA_DIR / "agents" / agent_id
+        return DATA_DIR / "agents" / _sanitize_agent_id(agent_id)
     return DATA_DIR
 
 

@@ -800,7 +800,12 @@ class AuthManager:
         if service is None or service == "google":
             active = self.account_manager.get_active_account()
             if active:
-                print(f"Active Account: [{active.index}] {active.email}")
+                if agent_id:
+                    agent_specific = self.account_manager._load_agent_active_account()
+                    label = "Active Account (agent-specific):" if agent_specific is not None else "Active Account (global):"
+                else:
+                    label = "Active Account:"
+                print(f"{label} [{active.index}] {active.email}")
             else:
                 accounts = self.account_manager.list_accounts()
                 if accounts:

@@ -121,7 +121,13 @@ class AccountManager:
         agent_file.write_text(json.dumps({"active_account": index}))
 
     def set_agent_active_account(self, index: int) -> None:
-        """Set the active account for the current agent."""
+        """Set the active account for the current agent.
+
+        Raises:
+            ValueError: If no account with the given index exists.
+        """
+        if not self.get_account_by_index(index):
+            raise ValueError(f"Account not found: {index}")
         self._save_agent_active_account(index)
 
     def clear_agent_active_account(self) -> None:
@@ -191,9 +197,13 @@ class AccountManager:
         if not target_account:
             raise ValueError(f"Account not found: {identifier}")
 
-        # Update active account
+        # Update active account in global index
         data["active_account"] = target_account["index"]
         self._save_index(data)
+
+        # Also persist to agent-specific file when running under an agent
+        if get_agent_id():
+            self._save_agent_active_account(target_account["index"])
 
         file_path = GOOGLE_AUTH_DIR / target_account["file"]
         return AccountInfo(
