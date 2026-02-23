@@ -27,7 +27,8 @@ from config import (
     DEFAULT_SESSION_ID,
     AGENT_BROWSER_ACTIVITY_FILE,
     AGENT_BROWSER_WATCHDOG_PID_FILE,
-    AGENT_BROWSER_IDLE_TIMEOUT_SECONDS
+    AGENT_BROWSER_IDLE_TIMEOUT_SECONDS,
+    get_agent_id,
 )
 from agent_browser_client import AgentBrowserClient, AgentBrowserError
 from account_manager import AccountManager, AccountInfo
@@ -789,6 +790,12 @@ class AuthManager:
         print("🔐 Authentication Status")
         print("=" * 40)
 
+        # Show agent ID if set
+        agent_id = get_agent_id()
+        if agent_id:
+            print(f"Agent ID: {agent_id}")
+            print()
+
         # Show active account for Google
         if service is None or service == "google":
             active = self.account_manager.get_active_account()
@@ -872,6 +879,14 @@ class AuthManager:
                 print("   Usage: auth_manager.py accounts reauth <index|email>")
                 return False
             self._accounts_reauth(identifier)
+        elif action == "use":
+            if not identifier:
+                print("❌ Error: Provide account index or email")
+                print("   Usage: auth_manager.py accounts use <index|email>")
+                return False
+            self._accounts_use(identifier)
+        elif action == "clear":
+            self._accounts_clear()
         else:
             print(f"❌ Unknown accounts action: {action}")
             return False
@@ -994,6 +1009,37 @@ class AuthManager:
         if success:
             print(f"✅ Re-authenticated: [{target.index}] {target.email}")
 
+    def _accounts_use(self, identifier: str):
+        """Set the agent-specific active account (OpenClaw account isolation)."""
+        agent_id = get_agent_id()
+        if not agent_id:
+            print("❌ No agent ID set (NBLM_AGENT_ID / OPENCLAW_AGENT / AGENT_NAME)")
+            return
+
+        accounts = self.account_manager.list_accounts()
+        target = None
+        for acc in accounts:
+            if str(acc.index) == str(identifier) or acc.email.lower() == identifier.lower():
+                target = acc
+                break
+
+        if not target:
+            print(f"❌ Account not found: {identifier}")
+            return
+
+        self.account_manager.set_agent_active_account(target.index)
+        print(f"✅ Agent '{agent_id}' will use: [{target.index}] {target.email}")
+
+    def _accounts_clear(self):
+        """Clear the agent-specific active account override."""
+        agent_id = get_agent_id()
+        if not agent_id:
+            print("❌ No agent ID set (NBLM_AGENT_ID / OPENCLAW_AGENT / AGENT_NAME)")
+            return
+
+        self.account_manager.clear_agent_active_account()
+        print(f"✅ Agent '{agent_id}' account override cleared (global active account will be used)")
+
 
 def main():
     parser = argparse.ArgumentParser(description='Manage NotebookLM authentication')
@@ -1030,7 +1076,7 @@ def main():
 
     # New accounts subcommand
     accounts_parser = subparsers.add_parser('accounts', help='Manage multiple Google accounts')
-    accounts_parser.add_argument('action', choices=['list', 'add', 'switch', 'remove', 'reauth'],
+    accounts_parser.add_argument('action', choices=['list', 'add', 'switch', 'remove', 'reauth', 'use', 'clear'],
                                  help='Account action')
     accounts_parser.add_argument('identifier', nargs='?', help='Account index or email')
 
