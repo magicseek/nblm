@@ -17,6 +17,8 @@ from config import (
     GOOGLE_AUTH_FILE,
     AUTH_DIR,
     LIBRARY_FILE,
+    get_agent_id,
+    get_agent_active_account_file,
 )
 
 
@@ -101,10 +103,51 @@ class AccountManager:
             ))
         return sorted(accounts, key=lambda a: a.index)
 
+    def _load_agent_active_account(self) -> Optional[int]:
+        """Load the agent-specific active account index, if set."""
+        agent_file = get_agent_active_account_file()
+        if not agent_file.exists():
+            return None
+        try:
+            data = json.loads(agent_file.read_text())
+            return data.get("active_account")
+        except (json.JSONDecodeError, IOError):
+            return None
+
+    def _save_agent_active_account(self, index: Optional[int]) -> None:
+        """Persist the agent-specific active account index."""
+        agent_file = get_agent_active_account_file()
+        agent_file.parent.mkdir(parents=True, exist_ok=True)
+        agent_file.write_text(json.dumps({"active_account": index}))
+
+    def set_agent_active_account(self, index: int) -> None:
+        """Set the active account for the current agent.
+
+        Raises:
+            ValueError: If no account with the given index exists.
+        """
+        if not self.get_account_by_index(index):
+            raise ValueError(f"Account not found: {index}")
+        self._save_agent_active_account(index)
+
+    def clear_agent_active_account(self) -> None:
+        """Clear the agent-specific active account override."""
+        agent_file = get_agent_active_account_file()
+        if agent_file.exists():
+            agent_file.unlink()
+
     def get_active_account(self) -> Optional[AccountInfo]:
-        """Get the currently active account."""
+        """Get the currently active account.
+
+        Agent-first: if an agent ID is set and has a stored active account,
+        that takes priority over the global index.
+        """
+        # Check agent-specific override first
+        active_index = self._load_agent_active_account()
+
         data = self._load_index()
-        active_index = data.get("active_account")
+        if active_index is None:
+            active_index = data.get("active_account")
         if active_index is None:
             return None
         for acc in data["accounts"]:
@@ -154,9 +197,13 @@ class AccountManager:
         if not target_account:
             raise ValueError(f"Account not found: {identifier}")
 
-        # Update active account
+        # Update active account in global index
         data["active_account"] = target_account["index"]
         self._save_index(data)
+
+        # Also persist to agent-specific file when running under an agent
+        if get_agent_id():
+            self._save_agent_active_account(target_account["index"])
 
         file_path = GOOGLE_AUTH_DIR / target_account["file"]
         return AccountInfo(

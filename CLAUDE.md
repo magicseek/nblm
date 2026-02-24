@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⚠️ IRON RULE - English Output
+
+**Always respond in English.** All code, documentation, comments, commit messages, and written output must be in English, regardless of the language used in user input.
+
 ## ⚠️ IRON RULE - NotebookLM Usage
 
 **When working in this repository and needing to reference or query NotebookLM, you MUST use the skill provided by this repo itself.** Do not use external NotebookLM tools or services - always use the scripts and tooling defined here.
